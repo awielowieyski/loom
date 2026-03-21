@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 
 
 class DatabaseConfig(BaseModel):
-    url: str = "postgresql+asyncpg://loom:loom@localhost:5432/loom"
+    url: str = "postgresql+asyncpg://loom:loom@localhost:5434/loom"
 
 
 class EmbeddingConfig(BaseModel):

@@ -1,5 +1,5 @@
 database:
-  url: "postgresql+asyncpg://loom:loom@localhost:5432/loom"
+  url: "postgresql+asyncpg://loom:loom@localhost:5434/loom"
 
 embedding:
   provider: "openai"
