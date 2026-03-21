@@ -54,7 +54,9 @@ class RegistryService:
             trust_tier=data.trust_tier,
             cost_profile=data.cost_profile,
             cost_drivers=data.cost_drivers,
-            estimated_duration=str(data.estimated_duration),
+            estimated_duration=data.estimated_duration.value
+            if hasattr(data.estimated_duration, "value")
+            else data.estimated_duration,
             extends=data.extends,
             embedding=embedding,
         )
