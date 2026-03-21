@@ -20,12 +20,16 @@ Loom is a **capability resolution service for agents**. Not a file registry. Not
 
 When an agent encounters a task it doesn't have local instructions for, it asks Loom: "how do I do X?" Loom returns the current, evaluated, trust-scored instructions — resolved at the point of need, like a DNS lookup. The skill never touches the filesystem as a static install. It's a response, not a file.
 
+Today, a frontier model with a few good local skills can often brute-force around missing capability descriptions. Loom is not claiming that every agent needs remote resolution for every task. It is designed for the harder case: environments with many tools, changing workflows, policy constraints, and non-trivial cost/latency trade-offs. In those settings, the key problem is not "can the model reason?" but "can the agent choose the right executable capability for this environment right now?"
+
 Loom provides:
 
-- **Semantic resolution** — agents describe what they need in natural language; Loom returns the best matching capabilities
+- **Semantic resolution** — agents describe what they need in natural language; Loom returns the best matching skills or capabilities for the task
+- **Dependency-aware selection** — results are ranked and filtered based on available tools, required scopes, network needs, and other execution constraints
 - **Evaluated quality** — every skill carries its own eval criteria; every amendment is scored against them
 - **Composition** — multi-step capabilities that compose atomic skills into higher-order outcomes
 - **Trust and provenance** — cryptographic signing, tiered trust levels, structured dependency declarations
+- **Org-specific adaptation** — community capabilities can be refined by corporate policy and personal preference without forking the whole workflow
 - **Economic metadata** — cost profiles and estimated duration so agents can route based on budget and latency
 - **Continuous evaluation** — skills are re-evaluated automatically to ensure they remain effective as models and ecosystems evolve
 
@@ -42,6 +46,8 @@ Loom provides:
 | Composition | None — flat list of atomic skills | First-class capabilities with data flow and dependency validation |
 | Freshness | Stale until manually updated | Always-current resolution |
 | Cost awareness | None | Cost profiles and duration metadata on every skill and capability |
+
+The harder comparison is not a file directory but a strong model plus local curated skills. Loom wins when the runtime must choose among multiple semantically plausible paths under trust, dependency, policy, and budget constraints. The differentiator is not remote storage of instructions; it is better runtime choice.
 
 ## 3. Core Concepts
 
@@ -480,9 +486,10 @@ For capabilities, these are aggregated from constituent skills but can be overri
 
 **Discovery Service:**
 - Semantic search via pgvector embeddings
-- Context-aware ranking (trust tier, cost profile, dependency satisfaction, usage outcomes)
+- Constraint-aware ranking (semantic match, local/corporate precedence, trust tier, cost profile, dependency satisfaction, usage outcomes)
 - Category browsing and filtering
 - Alternative suggestions (when resolving, return the best match + ranked alternatives)
+- Selection rationale and exclusion reasons for near matches
 
 **Eval Engine:**
 - New submission evaluation (structural, clarity, overlap, scope, dependency risk)
@@ -507,12 +514,23 @@ The core operation. Agent describes what it needs; Loom returns the best matchin
 ```yaml
 trust_floor: "community"        # minimum tier accepted
 cost_budget: "low"              # economic constraint
+latency_budget: "fast"          # acceptable time to complete
+data_classification: "internal" # affects which dependencies are allowed
 available_tools:                # what the agent currently has
   - "filesystem"
   - "git"
   - "web-search"
+approved_providers:
+  - "internal-data-warehouse"
+  - "public-web-search"
 runtime: "claude-code"          # agent framework identifier
 ```
+
+At resolution time, Loom does more than return a semantically similar result:
+
+- It prefers the highest-priority applicable layer (local > corporate > community)
+- It filters or downranks options whose dependencies, trust tier, or cost profile do not fit the current runtime context
+- It returns alternatives with explicit trade-offs so the runtime can adapt when constraints change
 
 **ResolvedSkill** response:
 ```yaml
@@ -526,12 +544,19 @@ dependencies:
   missing: ["github-api"]
 cost_profile: "free"
 estimated_duration: "fast"
+selection_rationale:
+  - "Matched the requested task"
+  - "All required dependencies are satisfied in the current runtime"
+  - "Preferred over higher-cost alternatives because cost_budget='low'"
 alternatives:
   - skill_id: "git-commit-ai-message"
     version: "1.1.0"
     trust_tier: "community"
     match_score: 0.82
     tradeoff: "Generates commit messages via LLM — higher quality but requires API call"
+rejected_candidates:
+  - skill_id: "git-commit-github-enriched"
+    reason: "Requires github-api, which is not available in this runtime"
 ```
 
 **Full MCP tool surface:**
@@ -796,7 +821,13 @@ dependencies:
   trust_requirements:
     data_classification: "internal"
     network_access: true
+    privacy_impact:
+      external_data_sharing: true       # does this skill send data to third parties?
+      input_logging: "unknown"          # none | anonymised | full | unknown
+      data_retention: "unknown"         # none | transient | persistent | unknown
 ```
+
+Privacy impact declarations follow the same principle as cost and dependency metadata: skills declare their privacy characteristics, runtimes enforce policy. An agent operating under GDPR constraints can filter out skills with `external_data_sharing: true` or `data_retention: "persistent"`. The `unknown` default ensures existing skills are not falsely marked as privacy-safe.
 
 This is **declarative, not executable**. The skill says what it needs; the runtime decides whether to grant it. Loom validates declarations at ingest time; runtimes enforce at execution time.
 
@@ -930,13 +961,39 @@ Initial taxonomy is maintainer-curated. Stewards can propose additions. New skil
 
 ## 9. Privacy Considerations
 
-Loom sees what agents ask for. This requires care:
+Loom sees what agents ask for. This requires care at two levels: the privacy characteristics of skills themselves, and Loom's own data handling.
+
+### 9.1 Skill-Level Privacy Metadata
+
+Skills declare their privacy impact in structured frontmatter, alongside cost and dependency metadata:
+
+- **`external_data_sharing`** — does executing this skill cause data to be sent to third-party services?
+- **`input_logging`** — does the skill's dependency chain log the inputs it receives? (`none`, `anonymised`, `full`, `unknown`)
+- **`data_retention`** — does the skill's dependency chain retain data beyond the immediate request? (`none`, `transient`, `persistent`, `unknown`)
+
+This enables privacy-aware resolution: an agent with a `privacy_floor` constraint can filter or downrank skills whose privacy impact exceeds what the runtime allows. An enterprise agent handling PII can exclude skills with `external_data_sharing: true`. The `unknown` default ensures skills without explicit declarations are not falsely treated as privacy-safe.
+
+Privacy metadata is validated at ingest (structural checks) but not verified by Loom — the same trust model as dependency declarations. Trust tier and community signals provide indirect verification over time.
+
+### 9.2 Platform Query Privacy
 
 - **Resolution queries are not logged with user identity** — the MCP server authenticates API keys for rate limiting and trust floor enforcement, but does not associate resolution queries with specific users or orgs
+- **Resolution query text is not stored** — Loom logs skill IDs and outcomes for quality signals, not the natural language query text. Query embeddings are ephemeral (computed, used for vector search, discarded)
 - **Usage reports are anonymous** — `context_hash` is a one-way hash of the task type, not the task content; runtime identifier is the framework, not the user
 - **Personal skills are local-only** — neither the public Loom nor corporate instances store personal skills. Personal skills live on the user's machine. The `extends` mechanism resolves community/corporate parts from their respective Loom instances and merges with personal context locally. No Loom instance ever sees the personal layer
 - **Corporate skills are org-scoped** — corporate Loom instances are isolated per-org. Cross-source resolution (`loom://` from a corporate instance) sends only the skill slug to the public registry, not the corporate context or the task description
-- **Embedding queries** — semantic search sends a task description to Loom's embedding model. These should be treated as ephemeral (not stored) and should not contain sensitive task content. Runtimes should sanitise queries before sending.
+- **Embedding queries** — semantic search sends a task description to Loom's embedding model. These should be treated as ephemeral (not stored) and should not contain sensitive task content. Runtimes should sanitise queries before sending
+
+### 9.3 Tiered Observability (Designed In, Built Later)
+
+Different consumers have fundamentally different privacy needs:
+
+- **Corporate instances** typically want full audit trails — which skills were resolved, by which team, how often, with what outcomes. This is a selling point for compliance-heavy organisations.
+- **Public registry users** want minimal telemetry — anonymous usage signals, no query logging, no activity profiling.
+
+These are different privacy contracts, not different levels of the same contract. The architecture accommodates this naturally: corporate Loom instances control their own logging policy (including full audit when required), while the public registry defaults to privacy-preserving behaviour. The multi-tenancy split in M5 is the natural boundary for this divergence.
+
+A future enhancement may introduce explicit **privacy tiers** on the public registry (e.g., opt-in to richer analytics for contributors who want skill performance data), but this is deferred beyond M5.
 
 ## 10. Multi-Runtime Compatibility
 
@@ -967,12 +1024,14 @@ Loom is agent-framework agnostic. Skills are markdown instructions, not framewor
 - MCP server with `resolve`, `resolve_capability`, `search`, `get_skill`, `report_usage`, `list_categories`
 - Eval engine: submission eval, amendment comparison, anti-complexity gate
 - Semantic search via pgvector
+- Constraint-aware resolution that accounts for trust, dependency satisfaction, and cost/time constraints
 - Trust tier computation (experimental → community automatic; verified manual)
 - Platform auth (API keys, OAuth, signing keys)
 - Dependency declarations validated at ingest
 - Cost and time metadata on all skills/capabilities
 - Usage report collection and quality signal aggregation
 - Continuous scheduled re-evaluation
+- Reference Python implementation of client-side `extends` resolution for local layering
 - Web UI for browsing, contribution, and review
 
 **Designed in, built later:**
@@ -984,6 +1043,8 @@ Loom is agent-framework agnostic. Skills are markdown instructions, not framewor
 - Fork-and-prove competitive versioning
 - Full billing / metering integration
 - Federated Loom nodes (decentralisation path)
+- Privacy tiers on the public registry (opt-in analytics for contributors)
+- Tiered observability policies (corporate audit vs public privacy-preserving defaults)
 
 ## 13. Monetisation Model
 

@@ -11,14 +11,15 @@
 2. **Each milestone proves a distinct part of the thesis.** M1 proves the concept; M2 proves it's better than alternatives; M3 proves it can do things no one else can; etc.
 3. **Foundation work is front-loaded into M1.** Project structure, DB, auth, testing, CI — all in M1 so later milestones focus purely on features.
 4. **The `extends` mechanism is a client-side convention.** Loom stores and returns the `extends` field; the agent runtime performs the merge. A reference implementation (Python library) is provided but the server doesn't execute merges.
+5. **Milestones should beat the real baseline, not just weaker incumbents.** The relevant comparison is often "strong model + local skills," so demos must prove better runtime choice under constraints, not just hosted skill retrieval.
 
 ---
 
-## M1: Functional MCP Skill Registry
+## M1: Constraint-Aware MCP Skill Resolution
 
-**Thesis proved:** An agent can discover and resolve skills at runtime via MCP. The "resolve, don't download" model works.
+**Thesis proved:** An agent can resolve the best executable skill for its current environment at runtime. The value is not remote skill hosting by itself; it is better constraint-aware choice than a static local skill list.
 
-**What you can demo:** Connect Claude Code (or any MCP client) to the Loom MCP server. Ask it to find a skill for "creating conventional git commits." It returns evaluated, structured instructions. The agent follows them. No file was installed.
+**What you can demo:** Connect Claude Code (or any MCP client) to the Loom MCP server. Ask it to find the best way to summarise recent code changes for release notes. Loom compares semantically similar skills with different trust, dependency, and cost profiles. In a runtime with only `git` and a low cost budget, it chooses the local-git path. In a runtime with richer dependencies and a higher quality budget, it returns a richer alternative. No file was installed, and the result changes for a concrete reason.
 
 ### Foundation
 
@@ -33,7 +34,7 @@
 
 ### Skill Registry
 
-- [ ] Skill format: Pydantic model matching the design spec frontmatter (including `extends`, `dependencies`, `eval_spec`, cost/time metadata)
+- [ ] Skill format: Pydantic model matching the design spec frontmatter (including `extends`, `dependencies`, `eval_spec`, cost/time metadata, `privacy_impact`)
 - [ ] Skill CRUD: create, read, update (version bump), list
 - [ ] Skill format validation on ingest (structural checks, required fields, dependency schema)
 - [ ] Version history: every mutation creates a `skill_versions` row, `skills` table holds latest
@@ -43,27 +44,34 @@
 
 - [ ] Embedding generation on skill ingest (description + content → pgvector)
 - [ ] Semantic search: query embedding → cosine similarity → ranked results
+- [ ] Constraint-aware ranking: semantic match + trust tier + dependency satisfaction + cost/time fit
 - [ ] Context-aware filtering: trust tier, cost profile, category, tags
 - [ ] Alternative suggestions: top match + up to 3 ranked alternatives with tradeoff descriptions
+- [ ] Selection rationale: explain why the chosen result beat nearby candidates
 
 ### MCP Server
 
-- [ ] `resolve(task_description, context?)` → ResolvedSkill with content, dependency status, alternatives
+- [ ] `resolve(task_description, context?)` → ResolvedSkill with content, dependency status, alternatives, and selection rationale
 - [ ] `get_skill(slug, version?)` → specific skill by slug, supports version pinning for `extends`
 - [ ] `search(query, category?, trust_tier?, cost_budget?)` → summaries without full content
 - [ ] `list_categories()` → category taxonomy
 - [ ] Structured error responses: no_match, trust_floor_not_met, deprecated, removed
+- [ ] Runtime context support in `resolve`: `available_tools`, `trust_floor`, `cost_budget`, and latency hints
 
 ### Seed Content
 
 - [ ] 15-20 seed skills across 3-4 categories (development/git, development/testing, documentation, code-review)
 - [ ] Each with complete frontmatter: eval_spec, dependencies, cost/time metadata
+- [ ] At least 3 seed clusters where multiple skills address the same task with different dependency/cost/trust trade-offs
 - [ ] At least 2 skills with `extends` references (to validate the field is stored and returned correctly)
+- [ ] At least 1 community skill designed to be extended locally, to prove layering before corporate multi-tenancy exists
 
 ### Deliverable
 
 - Running MCP server that an agent can connect to
-- Skills resolvable by natural language description
+- Skills resolvable by natural language description and runtime constraints
+- A demo where the same task resolves differently under different runtime contexts
+- Reference Python `extends` resolver for local + community layering
 - API documentation (auto-generated from FastAPI)
 - README with setup instructions
 
@@ -71,7 +79,7 @@
 
 ## M2: Quality & Trust
 
-**Thesis proved:** Loom is demonstrably better than a GitHub repo of skill files. Skills are evaluated, trust-scored, signed, and amendments are quality-gated. You can't ship a bad skill.
+**Thesis proved:** Loom is demonstrably better than static local skills or a GitHub repo of skill files in governed environments. Skills are evaluated, trust-scored, signed, and amendments are quality-gated. You can't ship a bad skill and expect the runtime to treat it as equivalent.
 
 **What you can demo:** Submit a vague, low-quality skill — it gets rejected with specific feedback. Submit a good one — it enters as `experimental`. Propose an amendment that adds complexity without improving quality — it gets flagged. Propose a genuine improvement — it auto-merges with a version bump. Show the eval scores and trust tier for any skill.
 
@@ -154,10 +162,17 @@
 - [ ] Capabilities can use `extends` to layer on top of other capabilities
 - [ ] Cross-source skill references in steps: `loom://` and `corp://` URI prefixes validated (corp:// returns "not available" in public Loom, but the schema is valid)
 
+### Layered Adaptation
+
+- [ ] Reference Python implementation of `extends` chain resolution and merge semantics
+- [ ] Demo: community capability + policy overlay + personal override merged client-side into one resolved result
+- [ ] Tests for precedence, version pinning, and local override behavior
+
 ### Deliverable
 
 - Full capability lifecycle: create, resolve, version, search
 - End-to-end demo: agent resolves a multi-step capability and executes it
+- Policy-overlay demo proving layered adaptation before full corporate deployment
 - At least 3 seed capabilities composing existing seed skills
 
 ---
@@ -227,7 +242,7 @@
 
 - [ ] Org model: org accounts, org-level API keys, member management
 - [ ] Tenant isolation: each org's skills are fully isolated in the database
-- [ ] Org-level configuration: trust floor, approved categories, custom eval criteria
+- [ ] Org-level configuration: trust floor, approved categories, custom eval criteria, logging/audit policy
 - [ ] Org admin dashboard: usage analytics, skill inventory, member access
 
 ### Cross-Source Resolution
@@ -258,19 +273,28 @@
 - [ ] Rate limit tiers aligned with plans
 - [ ] Billing integration (Stripe or similar)
 
+### Privacy & Observability
+
+- [ ] Tiered observability: corporate instances control their own audit/logging policy
+- [ ] Corporate audit trails: full resolution logging (which skills, which teams, outcomes) when org policy requires it
+- [ ] Public registry privacy defaults: anonymous usage signals only, no query text logging, no activity profiling
+- [ ] Privacy-aware resolution: `privacy_floor` context parameter filters skills by `privacy_impact` metadata
+- [ ] `privacy_impact` filtering in `resolve` and `search` constraint-aware ranking
+
 ### Deliverable
 
 - Working corporate Loom instance (self-hosted or Loom-hosted)
 - Three-tier resolution chain operational
 - Org admin dashboard with analytics
 - Metering and plan enforcement
+- Tiered observability with corporate audit and public privacy defaults
 
 ---
 
 ## Milestone Dependencies
 
 ```
-M1 (Registry + MCP) ──→ M2 (Quality + Trust) ──→ M3 (Composition)
+M1 (Resolution + MCP) ──→ M2 (Quality + Trust) ──→ M3 (Composition)
                                     │                      │
                                     └──────────┬───────────┘
                                                ↓
@@ -295,4 +319,5 @@ These are explicitly deferred beyond M5:
 - **Fork-and-prove** — competing skill versions visible to consumers
 - **Cross-org federation** — corporate instances sharing skills between partner orgs
 - **Skill format as open standard** — publish the spec independently of the implementation
-- **Client-side `extends` reference library** — Python/TypeScript libraries for agent runtimes to merge extends chains
+- **Additional client-side `extends` libraries beyond the reference Python implementation** — e.g. TypeScript and framework-specific helpers
+- **Public registry privacy tiers** — opt-in analytics for contributors who want richer skill performance data
