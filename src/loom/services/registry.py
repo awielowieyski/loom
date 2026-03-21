@@ -4,6 +4,7 @@ import uuid as uuid_mod
 
 from loom.db.repositories.category_repo import CategoryRepo
 from loom.db.repositories.skill_repo import SkillRepo
+from loom.models.common import TrustTier
 from loom.models.skill import Skill, SkillCreate, SkillSummary
 from loom.services.eval import EvalService
 
@@ -68,7 +69,7 @@ class RegistryService:
     async def list_skills(
         self,
         category_id: uuid_mod.UUID | None = None,
-        trust_tier: None = None,
+        trust_tier: TrustTier | None = None,
     ) -> list[SkillSummary]:
         """Return skill summaries with optional filters."""
         return await self._skill_repo.list_all(category_id=category_id, trust_tier=trust_tier)
