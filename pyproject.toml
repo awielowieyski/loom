@@ -16,6 +16,7 @@ dependencies = [
     "pydantic-settings>=2.7",
     "pyyaml>=6.0",
     "pynacl>=1.5",
+    "greenlet>=3.3.2",
 ]
 
 [project.optional-dependencies]
