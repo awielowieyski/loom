@@ -201,7 +201,7 @@ class SkillRepo:
 
         row = await self._conn.fetchrow(
             f"""
-            UPDATE skills SET {', '.join(set_parts)}, updated_at = now()
+            UPDATE skills SET {", ".join(set_parts)}, updated_at = now()
             WHERE id = $1
             RETURNING id, slug, name, description, content, category_id, tags, scope,
                       version, author_id, signature, trust_tier, cost_profile,

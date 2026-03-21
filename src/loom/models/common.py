@@ -1,12 +1,12 @@
 """Shared domain types used across skills, capabilities, and resolution."""
 
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel
 
 
-class TrustTier(str, Enum):
+class TrustTier(StrEnum):
     EXPERIMENTAL = "experimental"
     COMMUNITY = "community"
     VERIFIED = "verified"
@@ -20,7 +20,7 @@ class TrustTier(str, Enum):
         return self.rank >= floor.rank
 
 
-class CostProfile(str, Enum):
+class CostProfile(StrEnum):
     FREE = "free"
     LOW = "low"
     MODERATE = "moderate"
@@ -40,13 +40,13 @@ class CostProfile(str, Enum):
         return self.rank <= budget.rank
 
 
-class EstimatedDuration(str, Enum):
+class EstimatedDuration(StrEnum):
     FAST = "fast"
     MODERATE = "moderate"
     SLOW = "slow"
 
 
-class Scope(str, Enum):
+class Scope(StrEnum):
     COMMUNITY = "community"
     CORPORATE = "corporate"
 
