@@ -1,0 +1,104 @@
+slug: "review-accessibility"
+name: "Accessibility Code Review"
+description: "Review frontend code for WCAG 2.2 compliance and accessibility best practices"
+category: "code-review"
+tags: ["code-review", "accessibility", "wcag", "a11y", "frontend"]
+version: "1.0.0"
+cost_profile: "free"
+cost_drivers: []
+estimated_duration: "moderate"
+extends: null
+
+dependencies:
+  mcp_servers:
+    - uri: "filesystem"
+      required: true
+      scopes: ["read"]
+    - uri: "git"
+      required: true
+      scopes: ["read"]
+  apis: []
+  trust_requirements:
+    data_classification: "none"
+    network_access: false
+    privacy_impact:
+      external_data_sharing: false
+      input_logging: "none"
+      data_retention: "none"
+
+eval_spec:
+  scenarios:
+    - description: "Image without alt text"
+      input_context: "An img tag with no alt attribute on a product page"
+      success_criteria: "Review flags missing alt, distinguishes between informative images (need description) and decorative images (need empty alt)"
+    - description: "Form with poor label association"
+      input_context: "A login form where labels are positioned visually near inputs but not programmatically associated"
+      success_criteria: "Review identifies missing for/id linkage or aria-labelledby, provides corrected code"
+    - description: "Interactive element not keyboard accessible"
+      input_context: "A custom dropdown built with div elements and click handlers only"
+      success_criteria: "Review flags missing role, tabindex, and keyboard event handlers; recommends native select or ARIA pattern"
+  quality_dimensions:
+    - name: "wcag_reference"
+      description: "Each finding cites the specific WCAG 2.2 success criterion (e.g., 1.1.1 Non-text Content)"
+    - name: "severity_accuracy"
+      description: "Failures (must fix) are distinguished from warnings (should fix) and advisory (consider)"
+    - name: "code_examples"
+      description: "Blocking issues include corrected code, not just a description of the problem"
+    - name: "assistive_tech_context"
+      description: "Issues explain the screen reader or keyboard user experience impact"
+
+content: |
+  # Accessibility Code Review
+
+  You are reviewing frontend code for accessibility compliance against WCAG 2.2 (Web Content Accessibility Guidelines). The goal is to ensure the UI is usable by people with disabilities, including those using screen readers, keyboard navigation, or voice control.
+
+  This skill is designed to be extended locally to incorporate organisation-specific accessibility standards and component library guidelines.
+
+  ## WCAG Conformance Levels
+
+  - **Level A** — minimum requirements (must fix)
+  - **Level AA** — standard target for most products (must fix)
+  - **Level AAA** — enhanced (should fix where feasible)
+
+  ## Accessibility Checklist
+
+  ### Perceivable (can users perceive the content?)
+  - **1.1.1 Non-text Content (A)**: Do images have meaningful alt text? Are decorative images marked with `alt=""`?
+  - **1.3.1 Info and Relationships (A)**: Is structure conveyed programmatically (headings, lists, table headers)?
+  - **1.3.3 Sensory Characteristics (A)**: Are instructions relying solely on colour, shape, or position?
+  - **1.4.3 Contrast (AA)**: Do text and UI components meet 4.5:1 contrast ratio (3:1 for large text)?
+  - **1.4.4 Resize Text (AA)**: Does the UI work at 200% text zoom without loss of content or functionality?
+
+  ### Operable (can users operate the interface?)
+  - **2.1.1 Keyboard (A)**: Is all functionality reachable and operable via keyboard?
+  - **2.1.2 No Keyboard Trap (A)**: Can keyboard focus move away from all components?
+  - **2.4.3 Focus Order (A)**: Does the focus sequence follow a logical reading order?
+  - **2.4.7 Focus Visible (AA)**: Is keyboard focus indicator visible on all interactive elements?
+  - **2.5.3 Label in Name (A)**: Does the accessible name of controls include their visible label text?
+
+  ### Understandable (can users understand the content?)
+  - **3.1.1 Language of Page (A)**: Is `lang` set on the `<html>` element?
+  - **3.3.1 Error Identification (A)**: Are form errors identified in text (not just colour)?
+  - **3.3.2 Labels or Instructions (A)**: Do form inputs have visible labels?
+
+  ### Robust (is content compatible with assistive technology?)
+  - **4.1.1 Parsing (A)**: Are there duplicate IDs? Missing closing tags?
+  - **4.1.2 Name, Role, Value (A)**: Do custom interactive components have appropriate ARIA roles, states, and properties?
+  - **4.1.3 Status Messages (AA)**: Are dynamic status messages announced via `aria-live` or `role="status"`?
+
+  ## Output Format
+
+  ```
+  ## Accessibility Review Summary
+  <overall assessment>
+
+  ## Findings
+
+  ### [A — FAIL] Missing alt text — components/ProductImage.tsx:14
+  **WCAG**: 1.1.1 Non-text Content
+  **Impact**: Screen readers will announce the image filename instead of its purpose.
+  **Fix**: Add `alt="<meaningful description>"` or `alt=""` if purely decorative.
+
+  ## Verdict
+  [REQUEST_CHANGES | APPROVE_WITH_SUGGESTIONS | APPROVE]
+  ```

@@ -1,0 +1,110 @@
+slug: "review-pull-request"
+name: "Review Pull Request"
+description: "Perform a thorough code review of a pull request diff with structured feedback"
+category: "code-review"
+tags: ["code-review", "pull-request", "quality", "feedback"]
+version: "1.0.0"
+cost_profile: "free"
+cost_drivers: []
+estimated_duration: "fast"
+extends: null
+
+dependencies:
+  mcp_servers:
+    - uri: "filesystem"
+      required: true
+      scopes: ["read"]
+    - uri: "git"
+      required: true
+      scopes: ["read"]
+  apis: []
+  trust_requirements:
+    data_classification: "none"
+    network_access: false
+    privacy_impact:
+      external_data_sharing: false
+      input_logging: "none"
+      data_retention: "none"
+
+eval_spec:
+  scenarios:
+    - description: "Feature PR with logic changes"
+      input_context: "PR adds a new user registration flow spanning 4 files"
+      success_criteria: "Review identifies correctness issues, missing error handling, and naming improvements; each comment has a file:line reference"
+    - description: "Refactoring PR with no new features"
+      input_context: "PR extracts duplicated logic into a shared helper"
+      success_criteria: "Review confirms no behaviour change, checks the helper handles all original cases, and notes test coverage"
+    - description: "PR with no issues"
+      input_context: "A clean, well-tested one-line bug fix"
+      success_criteria: "Review confirms correctness without inventing problems; approves with brief justification"
+  quality_dimensions:
+    - name: "specificity"
+      description: "Each comment cites a specific file, line, or code excerpt"
+    - name: "categorisation"
+      description: "Feedback is labelled: blocking issue, suggestion, or nit"
+    - name: "constructiveness"
+      description: "Blocking issues include a suggested fix or direction"
+    - name: "correctness_focus"
+      description: "Blocking issues are genuine defects, not style preferences"
+
+content: |
+  # Review Pull Request
+
+  You are performing a structured code review. Your goal is to find genuine defects, not to impose preferences. All feedback must be specific and actionable.
+
+  This skill is designed to be extended for specialised review types (security, performance, accessibility).
+
+  ## Step 1 — Understand the change
+
+  Read the PR description (or ask the user for context). Understand: what problem does this change solve? What is the intended behaviour?
+
+  Run `git diff <base>..<head>` to see the full diff. If reviewing a local branch, use `git diff main...HEAD`.
+
+  ## Step 2 — Read the changed code
+
+  Read each changed file in full context (not just the diff lines). Pay attention to:
+  - Functions/methods that were modified
+  - New code paths introduced
+  - Removed code that might be referenced elsewhere
+
+  ## Step 3 — Evaluate correctness
+
+  Check for:
+  - **Logic errors**: does the code do what it claims?
+  - **Edge cases**: null/undefined inputs, empty collections, off-by-one errors
+  - **Error handling**: are error paths handled, or do they silently fail?
+  - **Race conditions**: is shared state accessed safely?
+  - **Data integrity**: are invariants maintained?
+
+  ## Step 4 — Evaluate quality
+
+  Check for:
+  - **Test coverage**: are the new code paths tested?
+  - **Naming**: do names accurately describe the thing they name?
+  - **Duplication**: is logic repeated that could be shared?
+  - **Complexity**: are there simpler ways to achieve the same result?
+
+  ## Step 5 — Format the review
+
+  Produce structured output:
+
+  ```
+  ## Summary
+  <2-3 sentence overall assessment>
+
+  ## Blocking Issues
+  - **file.py:42** — <description of defect and suggested fix>
+
+  ## Suggestions
+  - **file.py:87** — <improvement suggestion>
+
+  ## Nits (optional, non-blocking)
+  - **file.py:12** — <style or minor clarity note>
+
+  ## Verdict
+  [REQUEST_CHANGES | APPROVE_WITH_SUGGESTIONS | APPROVE]
+  ```
+
+  ## Step 6 — Confirm before submitting
+
+  Show the review to the user and ask for confirmation before posting to GitHub (if applicable).

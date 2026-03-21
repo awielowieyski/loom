@@ -1,0 +1,94 @@
+slug: "api-docs-generate"
+name: "Generate API Documentation"
+description: "Generate or update API documentation from source code and inline comments"
+category: "documentation"
+tags: ["documentation", "api", "openapi", "jsdoc", "docstrings"]
+version: "1.0.0"
+cost_profile: "free"
+cost_drivers: []
+estimated_duration: "moderate"
+extends: null
+
+dependencies:
+  mcp_servers:
+    - uri: "filesystem"
+      required: true
+      scopes: ["read", "write"]
+  apis: []
+  trust_requirements:
+    data_classification: "none"
+    network_access: false
+    privacy_impact:
+      external_data_sharing: false
+      input_logging: "none"
+      data_retention: "none"
+
+eval_spec:
+  scenarios:
+    - description: "Python module with partial docstrings"
+      input_context: "A FastAPI router file with some routes missing docstrings"
+      success_criteria: "Missing docstrings are added with parameter types, return types, and example values; existing docstrings are preserved"
+    - description: "TypeScript interface to OpenAPI schema"
+      input_context: "A TypeScript file with exported interfaces representing API request/response shapes"
+      success_criteria: "An OpenAPI 3.1 schema fragment is generated for each interface with correct types and optional field handling"
+    - description: "REST API with no documentation"
+      input_context: "An Express router file with no comments"
+      success_criteria: "JSDoc comments are added to each route handler with @route, @param, @returns, and @example tags"
+  quality_dimensions:
+    - name: "accuracy"
+      description: "Documentation matches actual parameter names, types, and behaviour"
+    - name: "completeness"
+      description: "All public endpoints and exported types have documentation"
+    - name: "examples"
+      description: "At least one request/response example per endpoint"
+    - name: "non_destructive"
+      description: "Existing documentation is preserved and enhanced, not replaced wholesale"
+
+content: |
+  # Generate API Documentation
+
+  You are generating or updating API documentation for a codebase. The goal is accurate, complete documentation that developers can rely on to integrate with or maintain the API.
+
+  ## Step 1 — Identify the documentation target
+
+  Ask the user to specify: a file, a directory, or a specific module. Determine the language and framework.
+
+  Detect the appropriate documentation standard:
+  - Python → docstrings (Google, NumPy, or reST style — match existing style)
+  - TypeScript/JavaScript → JSDoc or TSDoc
+  - Go → godoc comments
+  - REST APIs → OpenAPI 3.1 YAML/JSON
+  - GraphQL → schema descriptions
+
+  ## Step 2 — Audit existing documentation
+
+  Read the target files. Identify:
+  - Public functions, classes, and methods lacking docstrings
+  - Parameters with no type annotation or description
+  - Return types undocumented
+  - Missing examples
+
+  List the gaps to the user before proceeding.
+
+  ## Step 3 — Generate documentation
+
+  For each undocumented item, generate documentation that includes:
+  - **Description**: one sentence explaining what it does (not how)
+  - **Parameters**: name, type, description, whether required or optional, default value if any
+  - **Returns**: type and description of the return value
+  - **Raises / Throws**: error conditions with their types
+  - **Example**: a minimal realistic usage example
+
+  Do not invent behaviour — only document what you can confirm from the source code.
+
+  ## Step 4 — Integrate into source
+
+  Add documentation as inline comments following the language convention. Do not modify any logic. Present a diff for the user to review before writing.
+
+  ## Step 5 — Validate
+
+  If the project uses a documentation generator (Sphinx, TypeDoc, godoc, redoc), run it to confirm the documentation renders without errors. Report any warnings.
+
+  ## Step 6 — Report
+
+  Report: items documented, items skipped (with reason), and any validation output.

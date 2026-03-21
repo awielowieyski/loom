@@ -1,0 +1,98 @@
+slug: "write-integration-tests"
+name: "Write Integration Tests"
+description: "Generate integration tests that verify multiple components working together"
+category: "development/testing"
+tags: ["testing", "integration-tests", "quality", "api-testing"]
+version: "1.0.0"
+cost_profile: "free"
+cost_drivers: []
+estimated_duration: "slow"
+extends: null
+
+dependencies:
+  mcp_servers:
+    - uri: "filesystem"
+      required: true
+      scopes: ["read", "write"]
+  apis: []
+  trust_requirements:
+    data_classification: "none"
+    network_access: false
+    privacy_impact:
+      external_data_sharing: false
+      input_logging: "none"
+      data_retention: "none"
+
+eval_spec:
+  scenarios:
+    - description: "REST API endpoint with database"
+      input_context: "A POST /users endpoint that creates a user record in PostgreSQL"
+      success_criteria: "Test sends HTTP request, asserts status code, checks database state after, and cleans up"
+    - description: "Service-to-service call chain"
+      input_context: "An OrderService that calls InventoryService and then PaymentService"
+      success_criteria: "Integration test starts both services (or uses test containers), exercises the full flow, asserts final state"
+    - description: "Cleanup and isolation"
+      input_context: "Multiple integration tests that share a database"
+      success_criteria: "Each test runs in a transaction that is rolled back, or uses isolated test fixtures"
+  quality_dimensions:
+    - name: "realistic_environment"
+      description: "Tests use real or near-real infrastructure (test containers, in-memory equivalents)"
+    - name: "isolation"
+      description: "Tests clean up after themselves and do not depend on execution order"
+    - name: "meaningful_assertions"
+      description: "Tests verify the *outcome* of the integration, not just that no exception was thrown"
+    - name: "performance_awareness"
+      description: "Heavy setup (e.g., DB migrations) is shared across the test suite, not repeated per test"
+
+content: |
+  # Write Integration Tests
+
+  You are writing integration tests that verify multiple components interact correctly. Unlike unit tests, you will use real or near-real infrastructure, and you will assert on the observable outcomes of complete workflows.
+
+  ## Step 1 — Identify the integration boundary
+
+  Ask the user: what is the boundary of the system under test? Common scopes:
+  - A single HTTP endpoint (from request to database)
+  - A background job from trigger to completion
+  - A chain of service calls
+  - An event-driven workflow from publish to consume
+
+  Define what is "inside" (real, not mocked) and what is "outside" (mocked or stubbed).
+
+  ## Step 2 — Audit the test infrastructure
+
+  Check for:
+  - Existing test database setup (Docker Compose, test containers, SQLite in-memory)
+  - Existing fixtures or factories for test data
+  - Existing test client or HTTP testing helper (e.g., FastAPI `TestClient`, `supertest`, `httptest`)
+  - CI pipeline configuration for running integration tests
+
+  If no infrastructure exists, propose the minimal setup needed and ask the user to approve before creating it.
+
+  ## Step 3 — Plan the test scenarios
+
+  List scenarios to cover:
+  1. Successful end-to-end flow
+  2. Validation or business rule rejections
+  3. Downstream dependency failure (e.g., DB unreachable, external API error)
+  4. Concurrent or idempotent behaviour (if relevant)
+
+  Confirm the list with the user.
+
+  ## Step 4 — Write the tests
+
+  Structure each test:
+  1. **Setup**: create necessary test data using factories or direct DB inserts
+  2. **Execute**: call the system boundary (HTTP, message queue, function call)
+  3. **Assert**: check the response *and* side effects (DB state, emitted events, external calls)
+  4. **Teardown**: roll back transaction or delete created records
+
+  Use descriptive test names that describe the scenario, not the implementation.
+
+  ## Step 5 — Run the integration tests
+
+  Execute the integration test suite. Tests must all pass. If they fail because of environment issues (missing DB, wrong credentials), diagnose and fix the environment rather than skipping the test.
+
+  ## Step 6 — Report
+
+  Report: tests written, pass/fail, setup infrastructure created, and any gaps in coverage.
