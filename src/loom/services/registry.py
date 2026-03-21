@@ -4,8 +4,8 @@ import uuid as uuid_mod
 
 from loom.db.repositories.category_repo import CategoryRepo
 from loom.db.repositories.skill_repo import SkillRepo
-from loom.models.common import TrustTier
-from loom.models.skill import Skill, SkillCreate, SkillSummary
+from loom.models.common import CostProfile, DependencyDeclaration, EvalSpec, TrustTier
+from loom.models.skill import Skill, SkillCreate, SkillSummary, SkillUpdate
 from loom.services.eval import EvalService
 
 
@@ -61,6 +61,88 @@ class RegistryService:
             extends=data.extends,
             embedding=embedding,
         )
+
+    async def update_skill(
+        self,
+        slug: str,
+        data: SkillUpdate,
+        author_id: uuid_mod.UUID,
+    ) -> Skill:
+        """Merge new values over existing skill, update skills table, create version record."""
+        existing = await self._skill_repo.get_by_slug(slug)
+        if existing is None:
+            raise ValueError(f"Skill not found: {slug!r}")
+
+        # Merge: new values override existing where provided
+        content = data.content if data.content is not None else existing.content
+        description = data.description if data.description is not None else existing.description
+        tags = data.tags if data.tags is not None else existing.tags
+        cost_profile_val = (
+            data.cost_profile if data.cost_profile is not None else existing.cost_profile
+        )
+        cost_drivers = data.cost_drivers if data.cost_drivers is not None else existing.cost_drivers
+        estimated_duration_val = (
+            data.estimated_duration.value
+            if hasattr(data.estimated_duration, "value") and data.estimated_duration is not None
+            else data.estimated_duration
+            if data.estimated_duration is not None
+            else existing.estimated_duration
+        )
+        dependencies_obj = data.dependencies if data.dependencies is not None else None
+        eval_spec_obj = data.eval_spec if data.eval_spec is not None else None
+        extends = data.extends if data.extends is not None else existing.extends
+
+        # Build dicts for DB (pass Python dicts directly — asyncpg JSONB)
+        deps_dict = (
+            dependencies_obj.model_dump() if dependencies_obj is not None else existing.dependencies
+        )
+        eval_dict = eval_spec_obj.model_dump() if eval_spec_obj is not None else existing.eval_spec
+
+        cost_profile_enum = (
+            cost_profile_val
+            if isinstance(cost_profile_val, CostProfile)
+            else CostProfile(cost_profile_val)
+        )
+
+        updated = await self._skill_repo.update(
+            existing.id,
+            version=data.version,
+            content=content,
+            description=description,
+            tags=tags,
+            cost_profile=cost_profile_enum,
+            cost_drivers=cost_drivers,
+            estimated_duration=estimated_duration_val,
+            dependencies=deps_dict,
+            eval_spec=eval_dict,
+            extends=extends,
+        )
+        if updated is None:
+            raise ValueError(f"Update failed for skill: {slug!r}")
+
+        # Create version record
+        deps_model = (
+            dependencies_obj
+            if dependencies_obj is not None
+            else DependencyDeclaration(**existing.dependencies)
+        )
+        eval_model = eval_spec_obj if eval_spec_obj is not None else EvalSpec(**existing.eval_spec)
+
+        await self._skill_repo.create_version(
+            skill_id=existing.id,
+            version=data.version,
+            content=content,
+            dependencies=deps_model,
+            eval_spec=eval_model,
+            author_id=author_id,
+            cost_profile=cost_profile_enum,
+            cost_drivers=cost_drivers,
+            estimated_duration=estimated_duration_val,
+            extends=extends,
+            changelog=data.changelog,
+        )
+
+        return updated
 
     async def get_skill(self, slug: str, version: str | None = None) -> Skill | None:
         """Return a skill by slug (and optional version)."""

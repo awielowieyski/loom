@@ -162,6 +162,58 @@ class SkillRepo:
         )
         return SkillVersion(**dict(row))
 
+    async def update(
+        self,
+        skill_id: uuid_mod.UUID,
+        *,
+        version: str,
+        content: str | None = None,
+        description: str | None = None,
+        tags: list[str] | None = None,
+        cost_profile: CostProfile | None = None,
+        cost_drivers: list[str] | None = None,
+        estimated_duration: str | None = None,
+        dependencies: dict[str, object] | None = None,
+        eval_spec: dict[str, object] | None = None,
+        extends: str | None = None,
+    ) -> Skill | None:
+        """UPDATE skills SET ... WHERE id = $1, RETURNING *."""
+        set_parts: list[str] = ["version = $2"]
+        params: list[Any] = [skill_id, version]
+
+        def _add(field: str, value: object) -> None:
+            if value is not None:
+                params.append(value)
+                set_parts.append(f"{field} = ${len(params)}")
+
+        _add("content", content)
+        _add("description", description)
+        _add("tags", tags)
+        _add(
+            "cost_profile",
+            cost_profile.value if isinstance(cost_profile, CostProfile) else cost_profile,
+        )
+        _add("cost_drivers", cost_drivers)
+        _add("estimated_duration", estimated_duration)
+        _add("dependencies", dependencies)
+        _add("eval_spec", eval_spec)
+        _add("extends", extends)
+
+        row = await self._conn.fetchrow(
+            f"""
+            UPDATE skills SET {', '.join(set_parts)}, updated_at = now()
+            WHERE id = $1
+            RETURNING id, slug, name, description, content, category_id, tags, scope,
+                      version, author_id, signature, trust_tier, cost_profile,
+                      cost_drivers, estimated_duration, dependencies, eval_spec,
+                      extends, embedding, created_at, updated_at
+            """,  # noqa: S608
+            *params,
+        )
+        if row is None:
+            return None
+        return _row_to_skill(row)
+
     async def get_by_slug(self, slug: str, version: str | None = None) -> Skill | None:
         """Return a skill by slug (optionally at a specific version)."""
         if version is not None:

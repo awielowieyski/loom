@@ -1,5 +1,6 @@
 """Skill API routes."""
 
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -9,9 +10,12 @@ from loom.api.deps import get_discovery_service, get_registry_service
 from loom.api.middleware import verify_api_key
 from loom.models.common import CostProfile, TrustTier
 from loom.models.resolution import ResolutionContext, ResolutionError, ResolvedSkill
-from loom.models.skill import Skill, SkillSummary
+from loom.models.skill import Skill, SkillSummary, SkillUpdate
 from loom.services.discovery import DiscoveryService
 from loom.services.registry import RegistryService
+
+# M1: use a fixed system author ID for API-level operations
+_SYSTEM_AUTHOR_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 router = APIRouter(prefix="/api/v1/skills", tags=["skills"])
 
@@ -66,6 +70,23 @@ async def resolve_skill(
             detail=result.model_dump(),
         )
     return result
+
+
+@router.put("/{slug}", response_model=Skill)  # type: ignore[misc]
+async def update_skill(
+    slug: str,
+    body: SkillUpdate,
+    _: Annotated[str, Depends(verify_api_key)],
+    registry: Annotated[RegistryService, Depends(get_registry_service)],
+) -> Skill:
+    """Update a skill with a new version."""
+    try:
+        return await registry.update_skill(slug, body, author_id=_SYSTEM_AUTHOR_ID)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get("/{slug}", response_model=Skill)  # type: ignore[misc]

@@ -70,6 +70,20 @@ class SkillSummary(BaseModel):
     estimated_duration: str
 
 
+class SkillUpdate(BaseModel):
+    content: str | None = None
+    description: str | None = None
+    version: str  # required — must be new version
+    tags: list[str] | None = None
+    cost_profile: CostProfile | None = None
+    cost_drivers: list[str] | None = None
+    estimated_duration: EstimatedDuration | str | None = None
+    dependencies: DependencyDeclaration | None = None
+    eval_spec: EvalSpec | None = None
+    extends: str | None = None
+    changelog: str | None = None
+
+
 class SkillVersion(BaseModel):
     id: uuid_mod.UUID
     skill_id: uuid_mod.UUID
