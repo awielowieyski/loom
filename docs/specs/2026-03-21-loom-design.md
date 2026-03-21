@@ -56,7 +56,7 @@ name: "Conventional Commit"
 description: "Create git commits following the Conventional Commits specification with automatic scope detection"
 category: "development/git"
 tags: ["git", "commits", "conventions"]
-scope: "community"          # community | personal
+scope: "community"          # community | corporate | personal
 version: "2.3.1"
 author_id: "uuid"
 signature: "ed25519:..."    # over content + version
@@ -166,63 +166,172 @@ eval:
     - actionability: "Risk flags are specific and decision-relevant"
 ```
 
-### 3.3 The `extends` Mechanism
+### 3.3 Skill Sources & Resolution Chain
 
-The boundary between community and personal knowledge. Personal skills layer user-specific context on top of community capabilities without the community skill needing to know about it.
+Skills exist at three levels, each with different scope, visibility, and hosting:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Local (personal)                                            │
+│  Lives on: user's machine                                    │
+│  Scope: individual preferences, personal workflow tweaks     │
+│  Examples: "always sign my commits", "use our team's Jira"   │
+├─────────────────────────────────────────────────────────────┤
+│  Corporate (org)                                             │
+│  Lives on: private Loom instance (Loom-hosted or self-hosted)│
+│  Scope: org-wide knowledge, internal tools, policies         │
+│  Examples: "how to query our data warehouse",                │
+│            "vendor onboarding per compliance policy",         │
+│            "access the internal risk API"                     │
+├─────────────────────────────────────────────────────────────┤
+│  Community (public)                                          │
+│  Lives on: public Loom registry                              │
+│  Scope: general-purpose capabilities for any agent           │
+│  Examples: "conventional commits", "web search + synthesis"  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Resolution priority:** Local > Corporate > Community. When an agent resolves a task, it checks sources in priority order. A corporate skill for "vendor risk assessment" takes precedence over a community one — the org has domain-specific knowledge. A personal skill takes precedence over both.
+
+**Corporate skills are first-class.** They are not personal workarounds or community skills with caveats. They are org-specific capabilities maintained in a private registry, with the same versioning, signing, eval, and trust tier infrastructure as community skills. A corporate Loom instance runs the same eval engine, the same trust model, the same MCP interface — just scoped to an organisation.
+
+**Cross-source capabilities.** Capabilities can compose skills from any source:
+
+```yaml
+# Corporate capability (lives in org's private Loom instance)
+slug: "acme-vendor-onboarding"
+scope: "corporate"
+steps:
+  - skill: "loom://web-search-structured"           # community skill
+    role: "Gather public information about the vendor"
+
+  - skill: "corp://acme-risk-db-query"               # corporate skill
+    role: "Pull internal risk ratings from our database"
+
+  - skill: "loom://risk-synthesis"                    # community skill
+    role: "Synthesise findings into risk assessment"
+
+  - skill: "corp://acme-compliance-formatter"         # corporate skill
+    role: "Format per ACME compliance template and route to reviewers"
+```
+
+**URI scheme:** Skills reference their source via URI prefix:
+- `loom://` — public Loom registry
+- `corp://` — the agent's configured corporate Loom instance
+- No prefix — local skill (resolved from disk)
+
+### 3.3.1 The `extends` Mechanism
+
+`extends` bridges layers. Any layer can extend a skill from any lower-priority layer (but not the reverse — higher-priority layers refine, they don't get refined by lower ones).
+
+```
+Local can extend → Corporate or Community
+Corporate can extend → Community
+Community cannot extend → Corporate or Local
+```
 
 `extends` is first-class — not a convenience feature but the architectural bridge between shared knowledge and local context.
 
+**Example: personal extending corporate extending community**
+
 ```yaml
-# Local personal skill (never leaves the user's machine)
----
-name: my-vendor-onboarding
-scope: personal
+# Community skill (public Loom)
+slug: "vendor-risk-briefing"
+scope: "community"
+# General-purpose vendor risk assessment instructions...
+```
+
+```yaml
+# Corporate skill (org's private Loom) — extends community
+slug: "acme-vendor-assessment"
+scope: "corporate"
 extends: "loom://vendor-risk-briefing@verified"
 ---
 
-When using the vendor risk briefing capability:
-- Always check against our internal approved vendor list at /shared/compliance/approved_vendors.csv
+When using the vendor risk briefing:
+- Always cross-reference against our approved vendor list via corp://acme-vendor-list
 - Apply our risk threshold: flag any vendor with credit rating below BBB-
-- Include a section on GDPR compliance status (we're EU-based)
-- Route the final briefing to #procurement-review in Slack
-- Use our Jira project VENDOR for tracking: create a ticket with the briefing attached
+- Include GDPR compliance section (we're EU-based)
+- Query our internal incident database for prior vendor issues
 ```
 
-**How resolution works with `extends`:**
+```yaml
+# Local skill (on disk) — extends corporate
+name: my-vendor-workflow
+scope: personal
+extends: "corp://acme-vendor-assessment@latest"
+---
+
+After completing the vendor assessment:
+- Route to #procurement-review in Slack
+- Create a Jira ticket in project VENDOR with the briefing attached
+- CC me on the compliance notification email
+```
+
+**Resolution chain:**
 
 ```
-Agent resolves "my-vendor-onboarding" (local)
+Agent resolves "my-vendor-workflow" (local)
     ↓
-Sees extends: "loom://vendor-risk-briefing@verified"
+Sees extends: "corp://acme-vendor-assessment@latest"
     ↓
-Resolves community capability from Loom
+Resolves corporate skill from org's Loom instance
     ↓
-Layers personal overrides on top
+Corporate skill extends: "loom://vendor-risk-briefing@verified"
     ↓
-Agent receives: community instructions + personal context, merged
+Resolves community skill from public Loom
+    ↓
+Merges all three layers: community base → corporate refinements → personal preferences
+    ↓
+Agent receives the composed result
 ```
-
-**Rules:**
-- Personal skills can `extend` community skills. Never the reverse.
-- The personal layer can narrow, constrain, or add context. It should not contradict the community skill's core instructions.
-- `extends` supports version pinning (`@2.3.1`), trust tier pinning (`@verified`), or latest (`@latest`).
-- Multiple extends are allowed for composition: a personal skill can extend a community capability and add personal skills as additional steps.
-- The community skill has no knowledge of personal extensions. This is strictly a client-side merge.
 
 **Merge semantics:**
-The `extends` merge is a defined operation, not ad-hoc concatenation. The merged result is structured as:
+
+The `extends` merge is a defined operation, not ad-hoc concatenation. Layers are appended in priority order with clear delimiters:
 
 ```
 [Community skill content]
+
+---
+## Corporate Context
+[Corporate skill content]
 
 ---
 ## Local Overrides
 [Personal skill content]
 ```
 
-The personal layer is appended after the community content with a clear delimiter. The agent receives both sections and treats the personal overrides as higher-priority instructions that refine the community base. If the personal layer contradicts the community skill (e.g., "ignore step 3"), the agent follows the personal layer — the user's local preferences always win.
+Each higher-priority layer refines the one below. If layers contradict (e.g., corporate says "use BBB- threshold" but personal says "use BB+"), the higher-priority layer wins. The agent treats sections in reverse priority — later sections override earlier ones.
 
-This is intentionally simple: append, not merge. Complex merge strategies (field-level override, instruction replacement) are fragile and model-dependent. A clear "base + overrides" structure is unambiguous for any LLM.
+This is intentionally simple: append with delimiters, not field-level merge. Complex merge strategies are fragile and model-dependent. A clear layered structure is unambiguous for any LLM.
+
+**Rules:**
+- Higher-priority layers can extend lower-priority layers. Never the reverse.
+- `extends` supports version pinning (`@2.3.1`), trust tier pinning (`@verified`), or latest (`@latest`).
+- `extends` chains are resolved recursively — if A extends B which extends C, all three are resolved and merged.
+- The extended skill has no knowledge of its extenders. Extension is strictly a consumer-side operation.
+- Local skills never transit any Loom instance. Corporate skills never transit the public Loom. Each layer resolves from its own source.
+
+### 3.3.2 Corporate Loom Instances
+
+A corporate Loom instance is a private deployment of the same Loom service, scoped to an organisation:
+
+- **Same infrastructure**: registry, eval engine, MCP server, trust tiers, versioning, signing
+- **Private skills**: only accessible to agents authenticated with the org's API keys
+- **Cross-source resolution**: corporate instances can resolve `loom://` references against the public registry (configurable — air-gapped deployments can disable this)
+- **Org-specific eval criteria**: corporate skills can have eval specs that reference internal standards or compliance requirements
+- **Org-specific trust policies**: the org controls its own trust floor, approved categories, and promotion criteria
+
+**Hosting models:**
+
+| Model | Description | Target |
+|-------|-------------|--------|
+| **Loom-hosted** (SaaS) | Loom runs the private instance, org manages content | Mid-size orgs wanting managed infrastructure |
+| **Self-hosted** | Org deploys Loom on their infrastructure | Enterprise with security/compliance requirements |
+| **Loom-managed** | Loom deploys and maintains on org's cloud account | Enterprise wanting support without data leaving their environment |
+
+This is the primary monetisation path: **Loom is free for community. Corporate instances are the paid product.** The public registry creates the ecosystem; corporate instances capture the value of org-specific knowledge management.
 
 ### 3.3.1 Capability Execution Model
 
@@ -725,7 +834,7 @@ The schema supports but does not yet enforce:
 | content | text | full skill body (markdown) |
 | category | text | hierarchical (e.g., "development/git") |
 | tags | text[] | searchable tags |
-| scope | enum | community (personal skills are local-only, never stored in Loom) |
+| scope | enum | community (public Loom), corporate (private Loom instance). Personal skills are local-only, never stored in any Loom instance |
 | version | text | semver |
 | author_id | uuid | FK to users |
 | signature | text | ed25519 over content+version+deps+eval_spec |
@@ -825,7 +934,8 @@ Loom sees what agents ask for. This requires care:
 
 - **Resolution queries are not logged with user identity** — the MCP server authenticates API keys for rate limiting and trust floor enforcement, but does not associate resolution queries with specific users or orgs
 - **Usage reports are anonymous** — `context_hash` is a one-way hash of the task type, not the task content; runtime identifier is the framework, not the user
-- **Personal skills are local-only** — Loom's database does not store personal skills. The `scope: personal` enum exists only for the skill format spec (so local tooling can validate frontmatter), not in Loom's server schema. Personal skills live on the user's machine. The `extends` mechanism resolves the community part from Loom and merges with personal context locally. Loom never sees the personal layer
+- **Personal skills are local-only** — neither the public Loom nor corporate instances store personal skills. Personal skills live on the user's machine. The `extends` mechanism resolves community/corporate parts from their respective Loom instances and merges with personal context locally. No Loom instance ever sees the personal layer
+- **Corporate skills are org-scoped** — corporate Loom instances are isolated per-org. Cross-source resolution (`loom://` from a corporate instance) sends only the skill slug to the public registry, not the corporate context or the task description
 - **Embedding queries** — semantic search sends a task description to Loom's embedding model. These should be treated as ephemeral (not stored) and should not contain sensitive task content. Runtimes should sanitise queries before sending.
 
 ## 10. Multi-Runtime Compatibility
@@ -866,6 +976,7 @@ Loom is agent-framework agnostic. Skills are markdown instructions, not framewor
 - Web UI for browsing, contribution, and review
 
 **Designed in, built later:**
+- Corporate Loom instances (private registries, cross-source resolution)
 - Credential brokering / token exchange
 - Runtime scope enforcement
 - Cross-service delegation chains
@@ -874,12 +985,58 @@ Loom is agent-framework agnostic. Skills are markdown instructions, not framewor
 - Full billing / metering integration
 - Federated Loom nodes (decentralisation path)
 
-## 13. Open Questions
+## 13. Monetisation Model
+
+The public Loom registry is free. Corporate Loom instances are the paid product.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Free Tier (Community)                                    │
+│  - Full access to public registry (resolve, search, etc.) │
+│  - Submit and maintain community skills                   │
+│  - Usage reporting                                        │
+│  - Rate limited (generous for individual agents)          │
+└──────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────┐
+│  Team Tier                                                │
+│  - Corporate Loom instance (Loom-hosted SaaS)             │
+│  - Private skill registry with full eval engine           │
+│  - Cross-source resolution (corp:// + loom://)            │
+│  - Org-level API keys, trust floor policies               │
+│  - Usage analytics dashboard                              │
+│  - Higher rate limits                                     │
+│  - Category steward tools for internal curation           │
+└──────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────┐
+│  Enterprise Tier                                          │
+│  - Self-hosted or Loom-managed deployment                 │
+│  - Air-gapped option (no public registry connectivity)    │
+│  - SSO/SAML integration                                   │
+│  - Custom eval criteria and compliance policies           │
+│  - Audit logs and access controls                         │
+│  - SLA and dedicated support                              │
+│  - Multi-instance federation (e.g., per-division)         │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Why this works:**
+
+1. **The community registry is the moat.** A rich, evaluated, always-current public skill ecosystem is what makes Loom valuable. Gating it behind payment would kill adoption.
+
+2. **Corporate value is obvious.** Every org has internal knowledge that agents need — how to access internal systems, compliance policies, approved workflows. Today this knowledge lives in wikis, Confluence pages, and tribal knowledge. Corporate Loom turns it into agent-accessible, evaluated, maintained capabilities.
+
+3. **The extends chain creates lock-in.** Once an org's corporate skills build on community skills via `extends`, and their employees' personal skills build on corporate skills, the resolution chain is deeply integrated. Switching costs are high because the value is in the composition, not just the individual skills.
+
+4. **Metering is natural.** Corporate instances meter resolutions, eval runs, and storage. Usage-based pricing aligns cost with value delivered.
+
+## 14. Open Questions
 
 1. **Eval engine model selection**: The eval engine supports multiple LLM providers with fallback (see 5.4). Which model(s) should be the primary evaluator? Trade-off between cost and reasoning quality.
 2. **Embedding model choice**: pgvector embeddings need a specific model. Should this be configurable per-deployment or standardised across all Loom instances?
 3. **Resolution rate limiting**: How aggressive should rate limits be on `resolve`? Too tight hurts agent workflows; too loose invites abuse. Likely needs tiered limits by API key plan.
 4. **Skill format versioning**: As the frontmatter schema evolves, how do we handle backward compatibility with older skills? Likely a `schema_version` field with migration support.
-5. **Synthetic capability execution**: Should Loom ever verify that a capability *actually works* end-to-end (run it against synthetic inputs), or only validate structure and metadata? Synthetic execution is powerful but expensive and complex. Likely a v2 feature.
-6. **Monetisation model**: Free tier for community use, paid tiers for higher rate limits and org features? Or entirely open? This affects sustainability and governance incentives.
-7. **Cross-Loom federation**: If multiple Loom instances exist (enterprise-hosted, community-hosted), should they be able to federate — sharing community skills while keeping org-specific content private? Likely a v2+ concern but the data model should not preclude it.
+5. **Synthetic capability execution**: Should Loom ever verify that a capability *actually works* end-to-end (run it against synthetic inputs), or only validate structure and metadata? Powerful but expensive. Likely v2.
+6. **Cross-Loom federation**: Corporate instances connecting to the public registry is straightforward (one-way pull). But should corporate instances be able to publish back to community? Should multiple corporate instances federate (e.g., supply chain partners sharing vendor assessment skills)? The URI scheme (`loom://`, `corp://`) supports this but the trust model for cross-org federation needs design.
+7. **Skill format as open standard**: Should the Loom skill format (YAML frontmatter + markdown body + eval_spec) be proposed as an open standard independent of the Loom service? This would encourage adoption and make Loom the reference implementation rather than a proprietary format.
