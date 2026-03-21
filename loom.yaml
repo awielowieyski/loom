@@ -1,0 +1,22 @@
+database:
+  url: "postgresql+asyncpg://loom:loom@localhost:5432/loom"
+
+embedding:
+  provider: "openai"
+  model: "text-embedding-3-small"
+  dimensions: 1536
+
+llm:
+  provider: "openrouter"
+  model: "google/gemini-3-flash"
+
+mcp:
+  transports:
+    - type: "stdio"
+    - type: "sse"
+      host: "127.0.0.1"
+      port: 8080
+
+api:
+  host: "0.0.0.0"
+  port: 8000
