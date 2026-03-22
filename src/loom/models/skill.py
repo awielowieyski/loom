@@ -48,8 +48,8 @@ class Skill(BaseModel):
     cost_profile: CostProfile
     cost_drivers: list[str]
     estimated_duration: str
-    dependencies: dict[str, object]
-    eval_spec: dict[str, object]
+    dependencies: DependencyDeclaration = DependencyDeclaration()
+    eval_spec: EvalSpec = EvalSpec()
     signature: str | None = None
     extends: str | None = None
     embedding: list[float] | None = None
@@ -92,8 +92,8 @@ class SkillVersion(BaseModel):
     skill_id: uuid_mod.UUID
     version: str
     content: str
-    dependencies: dict[str, object]
-    eval_spec: dict[str, object]
+    dependencies: DependencyDeclaration = DependencyDeclaration()
+    eval_spec: EvalSpec = EvalSpec()
     cost_profile: str
     cost_drivers: list[str]
     estimated_duration: str

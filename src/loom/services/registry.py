@@ -6,9 +6,7 @@ from loom.db.repositories.category_repo import CategoryRepo
 from loom.db.repositories.skill_repo import SkillRepo
 from loom.models.common import (
     CostProfile,
-    DependencyDeclaration,
     EstimatedDuration,
-    EvalSpec,
     Scope,
     TrustTier,
 )
@@ -106,15 +104,9 @@ class RegistryService:
         estimated_duration_val = _coerce_duration(
             data.estimated_duration, existing.estimated_duration
         )
-        dependencies_obj = data.dependencies if data.dependencies is not None else None
-        eval_spec_obj = data.eval_spec if data.eval_spec is not None else None
+        dependencies = data.dependencies if data.dependencies is not None else existing.dependencies
+        eval_spec = data.eval_spec if data.eval_spec is not None else existing.eval_spec
         extends = data.extends if data.extends is not None else existing.extends
-
-        # Build dicts for DB (pass Python dicts directly — asyncpg JSONB)
-        deps_dict = (
-            dependencies_obj.model_dump() if dependencies_obj is not None else existing.dependencies
-        )
-        eval_dict = eval_spec_obj.model_dump() if eval_spec_obj is not None else existing.eval_spec
 
         updated = await self._skill_repo.update(
             existing.id,
@@ -125,27 +117,19 @@ class RegistryService:
             cost_profile=cost_profile_enum,
             cost_drivers=cost_drivers,
             estimated_duration=estimated_duration_val,
-            dependencies=deps_dict,
-            eval_spec=eval_dict,
+            dependencies=dependencies,
+            eval_spec=eval_spec,
             extends=extends,
         )
         if updated is None:
             raise ValueError(f"Update failed for skill: {slug!r}")
 
-        # Create version record
-        deps_model = (
-            dependencies_obj
-            if dependencies_obj is not None
-            else DependencyDeclaration(**existing.dependencies)
-        )
-        eval_model = eval_spec_obj if eval_spec_obj is not None else EvalSpec(**existing.eval_spec)
-
         await self._skill_repo.create_version(
             skill_id=existing.id,
             version=data.version,
             content=content,
-            dependencies=deps_model,
-            eval_spec=eval_model,
+            dependencies=dependencies,
+            eval_spec=eval_spec,
             author_id=author_id,
             cost_profile=cost_profile_enum,
             cost_drivers=cost_drivers,

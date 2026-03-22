@@ -209,8 +209,8 @@ class SkillRepo:
         cost_profile: CostProfile | None = None,
         cost_drivers: list[str] | None = None,
         estimated_duration: str | None = None,
-        dependencies: dict[str, object] | None = None,
-        eval_spec: dict[str, object] | None = None,
+        dependencies: DependencyDeclaration | None = None,
+        eval_spec: EvalSpec | None = None,
         extends: str | None = None,
     ) -> Skill | None:
         """UPDATE skills SET ... WHERE id = $1, RETURNING *."""
@@ -231,8 +231,8 @@ class SkillRepo:
         )
         _add("cost_drivers", cost_drivers)
         _add("estimated_duration", estimated_duration)
-        _add("dependencies", dependencies)
-        _add("eval_spec", eval_spec)
+        _add("dependencies", dependencies.model_dump() if dependencies else None)
+        _add("eval_spec", eval_spec.model_dump() if eval_spec else None)
         _add("extends", extends)
 
         row = await self._conn.fetchrow(

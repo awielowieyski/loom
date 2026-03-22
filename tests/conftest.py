@@ -1,6 +1,5 @@
 """Shared test fixtures."""
 
-import json
 import os
 import uuid
 from collections.abc import AsyncIterator
@@ -8,15 +7,12 @@ from collections.abc import AsyncIterator
 import asyncpg
 import pytest
 
+from loom.db.engine import _init_connection
+
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql://loom:loom@localhost:5434/loom",
 )
-
-
-async def _init_conn(conn: asyncpg.Connection) -> None:
-    """Set up codecs for each connection."""
-    await conn.set_type_codec("jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog")
 
 
 @pytest.fixture(scope="session")
@@ -25,7 +21,7 @@ async def db_pool() -> AsyncIterator[asyncpg.Pool]:
         TEST_DATABASE_URL,
         min_size=1,
         max_size=5,
-        init=_init_conn,
+        init=_init_connection,
     )
     assert pool is not None
     yield pool
