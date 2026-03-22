@@ -13,14 +13,18 @@ class DatabaseConfig(BaseModel):
 
 
 class EmbeddingConfig(BaseModel):
-    provider: Literal["openai"] = "openai"
+    provider: Literal["openai", "openrouter"] = "openai"
     model: str = "text-embedding-3-small"
     dimensions: int = 1536
+    api_key: str = ""
+    base_url: str | None = None
 
 
 class LLMConfig(BaseModel):
     provider: Literal["openai", "openrouter"] = "openrouter"
     model: str = "google/gemini-3-flash"
+    api_key: str = ""
+    base_url: str | None = None
 
 
 class MCPTransportConfig(BaseModel):
@@ -56,6 +60,8 @@ class LoomSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="LOOM_",
         env_nested_delimiter="__",
+        env_file=".env",
+        env_file_encoding="utf-8",
     )
 
     database: DatabaseConfig = DatabaseConfig()

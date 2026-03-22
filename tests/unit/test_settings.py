@@ -7,7 +7,7 @@ def test_settings_loads_defaults():
     """Settings should load from loom.yaml with sensible defaults."""
     settings = LoomSettings()
     assert settings.database.url == "postgresql+asyncpg://loom:loom@localhost:5434/loom"
-    assert settings.embedding.model == "text-embedding-3-small"
+    assert settings.embedding.model == "openai/text-embedding-3-small"
     assert settings.embedding.dimensions == 1536
     assert settings.llm.provider == "openrouter"
     assert settings.llm.model == "google/gemini-3-flash"

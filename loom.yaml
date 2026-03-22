@@ -2,13 +2,15 @@ database:
   url: "postgresql+asyncpg://loom:loom@localhost:5434/loom"
 
 embedding:
-  provider: "openai"
-  model: "text-embedding-3-small"
+  provider: "openrouter"
+  model: "openai/text-embedding-3-small"
   dimensions: 1536
+  base_url: "https://openrouter.ai/api/v1"
 
 llm:
   provider: "openrouter"
   model: "google/gemini-3-flash"
+  base_url: "https://openrouter.ai/api/v1"
 
 mcp:
   transports:

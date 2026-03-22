@@ -1,16 +1,15 @@
 """LLM provider factory."""
 
-import os
-
-from pydantic_ai.models.openrouter import OpenRouterModel
-from pydantic_ai.providers.openrouter import OpenRouterProvider
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from loom.settings import LLMConfig
 
 
-def create_llm_model(config: LLMConfig) -> OpenRouterModel:
-    """Create an LLM model from the given config."""
-    if config.provider == "openrouter":
-        api_key = os.environ.get("OPENROUTER_API_KEY", "placeholder")
-        return OpenRouterModel(config.model, provider=OpenRouterProvider(api_key=api_key))
-    raise ValueError(f"Unsupported LLM provider: {config.provider}")
+def create_llm_model(config: LLMConfig) -> OpenAIChatModel:
+    """Create an LLM model from config. All provider details come from settings."""
+    provider = OpenAIProvider(
+        api_key=config.api_key,
+        base_url=config.base_url,
+    )
+    return OpenAIChatModel(config.model, provider=provider)

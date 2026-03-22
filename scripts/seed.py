@@ -2,16 +2,16 @@
 """Seed script: load skills from seeds/ directory into the Loom database.
 
 Usage:
-    uv run python scripts/seed.py                      # no embeddings
-    OPENAI_API_KEY=sk-... uv run python scripts/seed.py  # with embeddings
+    uv run python scripts/seed.py
 
+Embeddings are generated using the provider configured in loom.yaml.
+API key should be set in .env (e.g. OPENROUTER_API_KEY=...).
 The script is idempotent: skills that already exist (by slug) are skipped.
 """
 
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import uuid
 from pathlib import Path
@@ -45,6 +45,7 @@ from loom.models.common import (  # noqa: E402
     TrustTier,
 )
 from loom.models.skill import SkillCreate  # noqa: E402
+from loom.providers.embeddings import create_embedder  # noqa: E402
 from loom.services.eval import EvalService  # noqa: E402
 from loom.services.registry import RegistryService  # noqa: E402
 from loom.settings import LoomSettings  # noqa: E402
@@ -54,27 +55,33 @@ SEED_USER_HANDLE = "loom-seed"
 SEED_USER_EMAIL = "seed@loom.internal"
 
 # ---------------------------------------------------------------------------
-# Embedding helper (optional — skipped when OPENAI_API_KEY is absent)
+# Embedding helper (uses provider factory from settings)
 # ---------------------------------------------------------------------------
 
+_embedder = None
 
-async def get_embedding(text: str) -> list[float] | None:
-    """Return an OpenAI embedding vector, or None if the key is not set."""
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
+
+def _get_embedder(settings: LoomSettings):  # type: ignore[no-untyped-def]
+    """Lazily create the embedder from settings, or return None if no API key."""
+    global _embedder  # noqa: PLW0603
+    if _embedder is not None:
+        return _embedder
+    try:
+        _embedder = create_embedder(settings.embedding)
+        return _embedder
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [warn] could not create embedder: {exc}")
+        return None
+
+
+async def get_embedding(text: str, settings: LoomSettings) -> list[float] | None:
+    """Return an embedding vector using the configured provider, or None."""
+    embedder = _get_embedder(settings)
+    if embedder is None:
         return None
     try:
-        import httpx
-
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/embeddings",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={"input": text, "model": "text-embedding-3-small"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data["data"][0]["embedding"]
+        result = await embedder.embed(text)
+        return result
     except Exception as exc:  # noqa: BLE001
         print(f"  [warn] embedding failed: {exc}")
         return None
@@ -255,11 +262,11 @@ async def seed() -> None:
     pool = await asyncpg.create_pool(url, min_size=1, max_size=5, init=_init_conn)
     assert pool is not None
 
-    has_openai = bool(os.environ.get("OPENAI_API_KEY"))
-    if has_openai:
-        print("OPENAI_API_KEY found — embeddings will be generated.")
+    has_embedder = _get_embedder(settings) is not None
+    if has_embedder:
+        print(f"Embedding provider: {settings.embedding.provider}/{settings.embedding.model}")
     else:
-        print("OPENAI_API_KEY not set — skills will be created without embeddings.")
+        print("No embedding API key found — skills will be created without embeddings.")
 
     yaml_files = sorted(SEEDS_DIR.rglob("*.yaml"))
     print(f"\nFound {len(yaml_files)} seed files in {SEEDS_DIR}\n")
@@ -324,11 +331,11 @@ async def seed() -> None:
 
             # Generate embedding
             embedding = None
-            if has_openai:
+            if has_embedder:
                 embed_text = (
                     f"{skill_create.name}\n{skill_create.description}\n{skill_create.content}"
                 )
-                embedding = await get_embedding(embed_text)
+                embedding = await get_embedding(embed_text, settings)
                 if embedding:
                     print(f"  [embed] {len(embedding)}-dim vector generated")
 
