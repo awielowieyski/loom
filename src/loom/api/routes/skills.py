@@ -25,7 +25,7 @@ class ResolveRequest(BaseModel):
     context: dict[str, object] | None = None
 
 
-@router.get("", response_model=list[SkillSummary])  # type: ignore[misc]
+@router.get("", response_model=list[SkillSummary])
 async def list_skills(
     _: Annotated[str, Depends(verify_api_key)],
     registry: Annotated[RegistryService, Depends(get_registry_service)],
@@ -35,7 +35,7 @@ async def list_skills(
     return await registry.list_skills(trust_tier=trust_tier)
 
 
-@router.get("/search", response_model=list[SkillSummary])  # type: ignore[misc]
+@router.get("/search", response_model=list[SkillSummary])
 async def search_skills(
     _: Annotated[str, Depends(verify_api_key)],
     discovery: Annotated[DiscoveryService, Depends(get_discovery_service)],
@@ -51,7 +51,7 @@ async def search_skills(
     )
 
 
-@router.post("/resolve")  # type: ignore[misc]
+@router.post("/resolve")
 async def resolve_skill(
     body: ResolveRequest,
     _: Annotated[str, Depends(verify_api_key)],
@@ -72,7 +72,7 @@ async def resolve_skill(
     return result
 
 
-@router.put("/{slug}", response_model=Skill)  # type: ignore[misc]
+@router.put("/{slug}", response_model=Skill)
 async def update_skill(
     slug: str,
     body: SkillUpdate,
@@ -89,7 +89,7 @@ async def update_skill(
         ) from exc
 
 
-@router.get("/{slug}", response_model=Skill)  # type: ignore[misc]
+@router.get("/{slug}", response_model=Skill)
 async def get_skill(
     slug: str,
     _: Annotated[str, Depends(verify_api_key)],

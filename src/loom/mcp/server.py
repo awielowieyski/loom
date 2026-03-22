@@ -43,7 +43,7 @@ async def _shutdown() -> None:
         _container = None
 
 
-@mcp.tool()  # type: ignore[misc]
+@mcp.tool()
 async def resolve(task_description: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
     """Resolve the best skill for a natural-language task description."""
     container = await _get_container()
@@ -59,7 +59,7 @@ async def resolve(task_description: str, context: dict[str, Any] | None = None) 
     return result.model_dump()
 
 
-@mcp.tool()  # type: ignore[misc]
+@mcp.tool()
 async def get_skill(slug: str, version: str | None = None) -> dict[str, Any]:
     """Retrieve a skill by slug and optional version."""
     container = await _get_container()
@@ -75,7 +75,7 @@ async def get_skill(slug: str, version: str | None = None) -> dict[str, Any]:
     return skill.model_dump()
 
 
-@mcp.tool()  # type: ignore[misc]
+@mcp.tool()
 async def search(
     query: str,
     category: str | None = None,
@@ -95,7 +95,7 @@ async def search(
     return [s.model_dump() for s in results]
 
 
-@mcp.tool()  # type: ignore[misc]
+@mcp.tool()
 async def list_categories() -> list[dict[str, Any]]:
     """List all skill categories."""
     container = await _get_container()
