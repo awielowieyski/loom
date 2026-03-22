@@ -80,8 +80,8 @@ async def get_embedding(text: str, settings: LoomSettings) -> list[float] | None
     if embedder is None:
         return None
     try:
-        result = await embedder.embed(text)
-        return result
+        result = await embedder.embed_query(text)
+        return list(result.embeddings[0])
     except Exception as exc:  # noqa: BLE001
         print(f"  [warn] embedding failed: {exc}")
         return None

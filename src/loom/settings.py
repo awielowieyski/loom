@@ -82,5 +82,6 @@ class LoomSettings(BaseSettings):
         return (
             init_settings,
             env_settings,
+            dotenv_settings,
             YamlSettingsSource(settings_cls),
         )

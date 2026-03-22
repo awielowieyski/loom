@@ -4,6 +4,7 @@ import uuid as uuid_mod
 from typing import Any
 
 import asyncpg
+import numpy as np
 
 from loom.models.common import CostProfile, DependencyDeclaration, EvalSpec, Scope, TrustTier
 from loom.models.skill import Skill, SkillSummary, SkillVersion
@@ -24,13 +25,19 @@ _SUMMARY_COLUMNS = (
 )
 
 
+def _to_vector(embedding: list[float] | None) -> np.ndarray | None:
+    """Convert a list of floats to a numpy array for pgvector."""
+    if embedding is None:
+        return None
+    return np.array(embedding, dtype=np.float32)
+
+
 def _row_to_skill(row: asyncpg.Record) -> Skill:
     d = dict(row)
-    # Vector comes back as a string or list; normalise to list[float]
+    # With register_vector, embedding comes back as numpy array
     embedding = d.get("embedding")
-    if embedding is not None and not isinstance(embedding, list):
-        embedding = [float(x) for x in str(embedding).strip("[]").split(",")]
-    d["embedding"] = embedding
+    if embedding is not None:
+        d["embedding"] = list(embedding)
     return Skill(**d)
 
 
@@ -94,7 +101,7 @@ class SkillRepo:
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8,
                 $9, $10, $11, $12, $13,
-                $14, $15, $16, $17, $18::vector
+                $14, $15, $16, $17, $18
             )
             RETURNING {_SKILL_COLUMNS}
             """,
@@ -115,7 +122,7 @@ class SkillRepo:
             deps_dict,
             eval_dict,
             extends,
-            str(embedding) if embedding is not None else None,
+            _to_vector(embedding),
         )
 
         skill = _row_to_skill(row)
@@ -313,7 +320,7 @@ class SkillRepo:
     ) -> list[Skill]:
         """Return skills ordered by vector similarity."""
         conditions: list[str] = ["embedding IS NOT NULL"]
-        params: list[Any] = [str(query_embedding)]
+        params: list[Any] = [np.array(query_embedding, dtype=np.float32)]
 
         if category_id is not None:
             params.append(category_id)
@@ -329,7 +336,7 @@ class SkillRepo:
             f"""
             SELECT {_SKILL_COLUMNS}
             FROM skills {where}
-            ORDER BY embedding <=> $1::vector
+            ORDER BY embedding <=> $1
             LIMIT ${len(params)}
             """,  # noqa: S608
             *params,
@@ -345,7 +352,7 @@ class SkillRepo:
     ) -> list[SkillSummary]:
         """Return skill summaries ordered by vector similarity (lightweight)."""
         conditions: list[str] = ["embedding IS NOT NULL"]
-        params: list[Any] = [str(query_embedding)]
+        params: list[Any] = [np.array(query_embedding, dtype=np.float32)]
 
         if category_id is not None:
             params.append(category_id)
@@ -361,7 +368,7 @@ class SkillRepo:
             f"""
             SELECT {_SUMMARY_COLUMNS}
             FROM skills {where}
-            ORDER BY embedding <=> $1::vector
+            ORDER BY embedding <=> $1
             LIMIT ${len(params)}
             """,  # noqa: S608
             *params,
