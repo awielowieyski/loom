@@ -13,11 +13,18 @@ from loom.services.container import ServiceContainer, close_container, create_co
 mcp: FastMCP = FastMCP(
     name="Loom",
     instructions=(
-        "Loom is a capability resolution service for agents. "
-        "Use resolve() to find the best skill for a task, "
-        "get_skill() to fetch a specific skill, "
-        "search() to list matching skills, "
-        "and list_categories() to explore the skill taxonomy."
+        "Loom provides expert, evaluated skill instructions for tasks you don't have "
+        "built-in knowledge for. When asked to do something you're not sure how to "
+        "approach — code reviews, documentation, git workflows, testing strategies, "
+        "or any unfamiliar task — call resolve() with a natural-language description "
+        "of what you need to accomplish. It returns step-by-step instructions you "
+        "should follow to complete the task.\n\n"
+        "Tools:\n"
+        "- resolve(task_description) — your primary entry point. Describe what you "
+        "need to do and get back the best matching skill with full instructions.\n"
+        "- search(query) — browse available skills by keyword with optional filters.\n"
+        "- get_skill(slug) — fetch a specific skill by its identifier.\n"
+        "- list_categories() — explore what kinds of skills are available."
     ),
 )
 
