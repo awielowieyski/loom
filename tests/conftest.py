@@ -1,11 +1,17 @@
 """Shared test fixtures."""
 
 import json
+import os
 import uuid
 from collections.abc import AsyncIterator
 
 import asyncpg
 import pytest
+
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql://loom:loom@localhost:5434/loom",
+)
 
 
 async def _init_conn(conn: asyncpg.Connection) -> None:
@@ -16,7 +22,7 @@ async def _init_conn(conn: asyncpg.Connection) -> None:
 @pytest.fixture(scope="session")
 async def db_pool() -> AsyncIterator[asyncpg.Pool]:
     pool = await asyncpg.create_pool(
-        "postgresql://loom:loom@localhost:5434/loom",
+        TEST_DATABASE_URL,
         min_size=1,
         max_size=5,
         init=_init_conn,
