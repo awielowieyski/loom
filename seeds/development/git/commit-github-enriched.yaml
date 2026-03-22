@@ -1,0 +1,104 @@
+slug: "commit-github-enriched"
+name: "GitHub-Enriched Commit Message"
+description: "Generate a commit message enriched with linked GitHub issue and PR context"
+category: "development/git"
+tags: ["git", "commit", "github", "issues", "conventional-commits"]
+version: "1.0.0"
+cost_profile: "low"
+cost_drivers: ["github_api_calls"]
+estimated_duration: "moderate"
+extends: null
+
+dependencies:
+  mcp_servers:
+    - uri: "filesystem"
+      required: true
+      scopes: ["read"]
+    - uri: "git"
+      required: true
+      scopes: ["read", "write"]
+  apis:
+    - name: "github_api"
+      auth_type: "oauth"
+      scopes: ["repo:read", "issues:read"]
+  trust_requirements:
+    data_classification: "internal"
+    network_access: true
+    privacy_impact:
+      external_data_sharing: true
+      input_logging: "none"
+      data_retention: "none"
+
+eval_spec:
+  scenarios:
+    - description: "Branch name contains issue number"
+      input_context: "Current branch is 'fix/123-crash-on-login'; issue #123 exists on GitHub"
+      success_criteria: "Commit message footer contains 'Closes #123' and subject reflects the issue title"
+    - description: "No linked issue found"
+      input_context: "Branch is 'ad-hoc-cleanup' with no issue number pattern"
+      success_criteria: "Skill generates a conventional commit without issue footer and informs user no issue was found"
+    - description: "Multiple issue references in branch"
+      input_context: "Branch is 'feat/456-789-bulk-import' referencing two issues"
+      success_criteria: "Both issue refs appear in the footer with appropriate verb (Closes vs Refs)"
+  quality_dimensions:
+    - name: "issue_linkage"
+      description: "Correctly identifies and links related GitHub issues"
+    - name: "spec_compliance"
+      description: "Output follows Conventional Commits spec"
+    - name: "graceful_degradation"
+      description: "Falls back to plain conventional commit when GitHub API is unavailable or no issue found"
+    - name: "footer_accuracy"
+      description: "Uses 'Closes' for issues being resolved, 'Refs' for related-but-not-closing issues"
+
+content: |
+  # GitHub-Enriched Commit Message
+
+  You are generating a commit message that incorporates linked GitHub issue context to produce a more informative and traceable commit history.
+
+  **Note:** This skill calls the GitHub API and sends issue titles/descriptions externally. Ensure your repository and issues are not confidential before use.
+
+  ## Step 1 — Extract issue references from the branch name
+
+  Run `git branch --show-current` to get the current branch name. Look for patterns:
+  - `fix/123-description` → issue #123
+  - `feat/456` → issue #456
+  - `issue-789-something` → issue #789
+  - `#101-patch` → issue #101
+
+  If no issue number is found, skip to Step 4 with no issue context.
+
+  ## Step 2 — Fetch issue details from GitHub
+
+  For each extracted issue number, call the GitHub API:
+  ```
+  GET /repos/{owner}/{repo}/issues/{issue_number}
+  ```
+
+  Retrieve: title, body (first 200 chars), labels, and state. If the issue is closed, use 'Refs' instead of 'Closes' in the footer.
+
+  To determine `{owner}/{repo}`, run `git remote get-url origin` and parse the GitHub URL.
+
+  ## Step 3 — Collect the staged diff
+
+  Run `git diff --cached`. If nothing is staged, abort with a clear message.
+
+  ## Step 4 — Build the commit message
+
+  Construct the message following Conventional Commits v1.0.0:
+
+  **Subject line:** Derive type and scope from the diff. Incorporate the issue title as context for the description if it clarifies intent. Keep subject ≤ 72 chars.
+
+  **Body (optional):** Include if the change is non-obvious. Reference what the issue asked for and how this commit addresses it.
+
+  **Footers:**
+  - `Closes #<N>` for each open issue the commit resolves
+  - `Refs #<N>` for related issues not fully resolved
+  - `Co-authored-by:` if applicable
+
+  ## Step 5 — Present and confirm
+
+  Show the complete commit message to the user and ask for approval before committing. Allow edits.
+
+  ## Step 6 — Commit
+
+  Run `git commit -m "<message>"` and report the commit SHA.

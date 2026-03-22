@@ -1,0 +1,104 @@
+slug: "release-notes-ai"
+name: "Release Notes (AI Summarised)"
+description: "Generate human-friendly release notes with an LLM summarising technical changes for end users"
+category: "documentation"
+tags: ["release-notes", "changelog", "llm", "ai", "user-facing"]
+version: "1.0.0"
+cost_profile: "moderate"
+cost_drivers: ["llm_inference", "large_context_window"]
+estimated_duration: "slow"
+extends: null
+
+dependencies:
+  mcp_servers:
+    - uri: "git"
+      required: true
+      scopes: ["read"]
+    - uri: "filesystem"
+      required: true
+      scopes: ["read", "write"]
+  apis:
+    - name: "llm_api"
+      auth_type: "api_key"
+      scopes: ["completions"]
+  trust_requirements:
+    data_classification: "internal"
+    network_access: true
+    privacy_impact:
+      external_data_sharing: true
+      input_logging: "anonymised"
+      data_retention: "transient"
+
+eval_spec:
+  scenarios:
+    - description: "Technical commits translated to user language"
+      input_context: "Commits include 'refactor(db): normalise user schema' and 'perf(api): add connection pooling'"
+      success_criteria: "Output describes benefits to users ('faster response times') not implementation details"
+    - description: "Large release with 50+ commits"
+      input_context: "Version bump from 2.0 to 3.0 with many changes"
+      success_criteria: "LLM produces a concise 'Highlights' section of 3-5 key themes, followed by categorised detail"
+    - description: "Breaking changes clearly highlighted"
+      input_context: "Three commits include BREAKING CHANGE footers"
+      success_criteria: "Release notes lead with a prominent warning about breaking changes with migration guidance"
+  quality_dimensions:
+    - name: "user_voice"
+      description: "Language is appropriate for end users, not developers reading diff output"
+    - name: "accuracy"
+      description: "Summary accurately reflects actual changes without hallucination"
+    - name: "structure"
+      description: "Highlights section followed by detail; breaking changes are prominent"
+    - name: "actionability"
+      description: "Breaking changes include what users need to do to upgrade"
+
+content: |
+  # Release Notes (AI Summarised)
+
+  You are generating user-facing release notes where an LLM translates technical git history into language suitable for end users, product teams, and non-developer stakeholders.
+
+  **Note:** This skill sends commit history to an external LLM. Costs scale with the size of the commit range. Use for major releases; use `release-notes-local` for routine patch releases.
+
+  ## Step 1 — Collect the technical history
+
+  Determine `from_ref` and `to_ref`. Run:
+  ```
+  git log <from_ref>..<to_ref> --format="%s%n%b%n---" --no-merges
+  ```
+
+  Collect: all commit subjects and bodies, total commit count, date range, and list of changed files (`git diff --stat <from_ref> <to_ref>`).
+
+  ## Step 2 — Chunk large histories
+
+  If there are more than 80 commits or the diff stat exceeds 5,000 characters, group commits by directory/module first and summarise each group locally before sending to the LLM. This keeps token cost reasonable and produces better-structured output.
+
+  ## Step 3 — Build the LLM prompt
+
+  Send to the configured LLM:
+
+  ```
+  You are writing release notes for version <version> of <project_name>.
+
+  Your audience is end users and product stakeholders — not developers. Translate technical changes into user benefits. Avoid jargon like "refactor", "schema migration", or "dependency injection".
+
+  Commit history:
+  <history>
+
+  Write release notes with:
+  1. A one-paragraph "What's New" highlights summary (3-5 key themes)
+  2. Breaking Changes section (if any BREAKING CHANGE footers exist) — explain what users must do differently
+  3. New Features (user-visible improvements)
+  4. Bug Fixes (user-observable problems now resolved)
+  5. Performance & Reliability (if relevant)
+
+  For each item write one sentence from the user's perspective.
+  ```
+
+  ## Step 4 — Review and refine
+
+  Present the draft to the user. Ask:
+  > "Does this accurately represent the release? Any sections to expand, remove, or reword?"
+
+  Incorporate feedback before finalising.
+
+  ## Step 5 — Write output
+
+  Offer output destinations: prepend to `CHANGELOG.md`, write to `RELEASE-<version>.md`, or print to stdout. Also offer to create a GitHub Release draft via the API if credentials are available.

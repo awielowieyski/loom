@@ -1,0 +1,91 @@
+slug: "write-unit-tests"
+name: "Write Unit Tests"
+description: "Generate unit tests for a specified function, class, or module"
+category: "development/testing"
+tags: ["testing", "unit-tests", "quality", "tdd"]
+version: "1.0.0"
+cost_profile: "free"
+cost_drivers: []
+estimated_duration: "moderate"
+extends: null
+
+dependencies:
+  mcp_servers:
+    - uri: "filesystem"
+      required: true
+      scopes: ["read", "write"]
+  apis: []
+  trust_requirements:
+    data_classification: "none"
+    network_access: false
+    privacy_impact:
+      external_data_sharing: false
+      input_logging: "none"
+      data_retention: "none"
+
+eval_spec:
+  scenarios:
+    - description: "Pure function with clear inputs and outputs"
+      input_context: "A function that validates an email address using regex"
+      success_criteria: "Tests cover valid emails, invalid formats, empty string, and edge cases like very long addresses"
+    - description: "Class with dependencies"
+      input_context: "An OrderProcessor class that depends on a PaymentGateway interface"
+      success_criteria: "Tests mock PaymentGateway, verify happy path, payment failure, and network timeout cases"
+    - description: "Existing test file to extend"
+      input_context: "A test file already exists but doesn't cover error paths"
+      success_criteria: "New tests are added to the existing file without duplicating existing test names"
+  quality_dimensions:
+    - name: "coverage"
+      description: "Tests cover happy path, error cases, and meaningful edge cases"
+    - name: "isolation"
+      description: "Tests are independent; each test sets up its own state"
+    - name: "readability"
+      description: "Test names clearly describe the scenario being tested (given_when_then or descriptive)"
+    - name: "no_false_confidence"
+      description: "Tests assert meaningful outcomes, not trivial always-true conditions"
+
+content: |
+  # Write Unit Tests
+
+  You are writing unit tests for a specified code target. Your goal is to produce tests that give genuine confidence the code is correct, not just tests that pass trivially.
+
+  ## Step 1 — Understand the target
+
+  Read the specified file or function. Identify:
+  - The public API surface (functions, methods, or class interfaces to test)
+  - Return types and side effects
+  - Dependencies that will need mocking
+  - Error conditions the code explicitly handles (and those it should handle but doesn't)
+
+  ## Step 2 — Check for existing tests
+
+  Look for an existing test file (e.g., `tests/test_<module>.py`, `__tests__/<module>.test.ts`). If one exists, read it before writing new tests to avoid duplication.
+
+  ## Step 3 — Plan the test cases
+
+  Before writing code, list the test cases you will write:
+  1. Happy path(s) — normal inputs, expected output
+  2. Boundary values — empty collections, zero, negative numbers, max values
+  3. Error conditions — invalid inputs, missing data, type errors
+  4. Dependency failures — what happens when an injected service throws or returns null
+
+  Show this plan to the user and ask if any important cases are missing.
+
+  ## Step 4 — Write the tests
+
+  Use the project's existing test framework (detect from `package.json`, `pyproject.toml`, `go.mod`, etc.). Follow the project's existing naming conventions.
+
+  Structure each test as:
+  - **Arrange**: set up inputs and mocks
+  - **Act**: call the unit under test
+  - **Assert**: verify the outcome with specific assertions (not just "no error")
+
+  Name tests descriptively: `test_returns_none_when_user_not_found` or `should throw InvalidInput when email is empty`.
+
+  ## Step 5 — Run the tests
+
+  Execute the test suite for the new tests only (e.g., `pytest tests/test_target.py -v` or `npm test -- --testPathPattern=target`). All new tests must pass. If any fail, fix the test or document why the production code is incorrect.
+
+  ## Step 6 — Report results
+
+  Report: number of tests added, pass/fail status, and any coverage gaps that remain.

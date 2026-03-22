@@ -1,0 +1,97 @@
+slug: "write-unit-tests-tdd"
+name: "Write Unit Tests (TDD)"
+description: "Write tests first, then implement code to make them pass using Test-Driven Development"
+category: "development/testing"
+tags: ["testing", "unit-tests", "tdd", "red-green-refactor"]
+version: "1.0.0"
+cost_profile: "free"
+cost_drivers: []
+estimated_duration: "slow"
+extends: "loom://write-unit-tests@1.0.0"
+
+dependencies:
+  mcp_servers:
+    - uri: "filesystem"
+      required: true
+      scopes: ["read", "write"]
+  apis: []
+  trust_requirements:
+    data_classification: "none"
+    network_access: false
+    privacy_impact:
+      external_data_sharing: false
+      input_logging: "none"
+      data_retention: "none"
+
+eval_spec:
+  scenarios:
+    - description: "New function specified by description only"
+      input_context: "User asks to implement a function that parses ISO 8601 duration strings"
+      success_criteria: "Tests are written and failing before any implementation code exists; implementation is then written to pass them"
+    - description: "Incremental TDD cycle"
+      input_context: "Add support for negative duration values to an existing parser"
+      success_criteria: "One failing test is written, minimal code is added to pass it, then the cycle repeats for the next case"
+    - description: "Refactor phase"
+      input_context: "All tests pass but the implementation has a code smell"
+      success_criteria: "Refactoring is performed with all tests remaining green throughout"
+  quality_dimensions:
+    - name: "red_first"
+      description: "Tests are confirmed failing before implementation is written"
+    - name: "minimal_implementation"
+      description: "Each green step adds only the code needed to pass the current failing test"
+    - name: "refactor_discipline"
+      description: "Refactor phase removes duplication without adding new functionality"
+    - name: "cycle_visibility"
+      description: "User can see each Red/Green/Refactor step as it happens"
+
+content: |
+  # Write Unit Tests (TDD)
+
+  This skill extends the base `write-unit-tests` skill with strict Test-Driven Development (TDD) discipline. You will follow the Red-Green-Refactor cycle, ensuring tests are written and confirmed failing *before* any implementation code exists.
+
+  ## TDD Cycle Overview
+
+  **Red** → Write a failing test that captures the next piece of desired behaviour.
+  **Green** → Write the minimum code to make that test pass. Do not gold-plate.
+  **Refactor** → Clean up duplication or poor structure while keeping all tests green.
+
+  Repeat until the feature is complete.
+
+  ## Step 1 — Understand the requirement
+
+  Ask the user for a clear description of the behaviour to implement. Do not look at any existing implementation. Identify the public interface that will be tested.
+
+  ## Step 2 — Set up the test file
+
+  Create the test file before the implementation file. Import the not-yet-existing target module. The import will fail — this is expected and is the first "red".
+
+  ## Step 3 — Red phase — write one failing test
+
+  Write the simplest test for the first behaviour. Run the test suite and confirm it fails with an appropriate message (not a syntax error or wrong assertion — a genuine "code not implemented" failure). Show the failure output to the user.
+
+  ## Step 4 — Green phase — write minimal implementation
+
+  Write just enough production code to make the failing test pass. Do not implement anything not yet required by a test. Run the test and confirm it goes green. Show the passing output.
+
+  ## Step 5 — Refactor phase
+
+  Review both the test and the implementation for:
+  - Duplication (extract helpers if a pattern repeats in 3+ places)
+  - Poor naming
+  - Unnecessary complexity
+
+  Make changes while keeping tests green. Run tests after each change.
+
+  ## Step 6 — Repeat
+
+  Return to Step 3 for the next behaviour. Continue until all agreed behaviours are covered.
+
+  ## Step 7 — Final check
+
+  Run the complete test suite (not just new tests) to ensure no regressions. Report: total tests written, coverage achieved, and any deferred cases.
+
+  ## Discipline Rules
+
+  - Never write implementation code before a failing test demands it
+  - Never write two tests at once; complete each Red-Green-Refactor cycle fully
+  - If a test is hard to write, this signals a design problem — stop and redesign the interface

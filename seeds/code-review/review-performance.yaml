@@ -1,0 +1,106 @@
+slug: "review-performance"
+name: "Performance Code Review"
+description: "Review code for performance issues including algorithmic complexity, I/O patterns, and memory usage"
+category: "code-review"
+tags: ["code-review", "performance", "optimization", "complexity", "profiling"]
+version: "1.0.0"
+cost_profile: "low"
+cost_drivers: []
+estimated_duration: "moderate"
+extends: null
+
+dependencies:
+  mcp_servers:
+    - uri: "filesystem"
+      required: true
+      scopes: ["read"]
+    - uri: "git"
+      required: true
+      scopes: ["read"]
+  apis: []
+  trust_requirements:
+    data_classification: "none"
+    network_access: false
+    privacy_impact:
+      external_data_sharing: false
+      input_logging: "none"
+      data_retention: "none"
+
+eval_spec:
+  scenarios:
+    - description: "N+1 query in ORM code"
+      input_context: "A loop that calls the database inside each iteration to fetch related records"
+      success_criteria: "Review identifies the N+1 pattern, quantifies the problem (N queries vs 1), and suggests eager loading or a join"
+    - description: "Inefficient sorting algorithm"
+      input_context: "A function that sorts a large list using a bubble sort implementation"
+      success_criteria: "Review flags O(n²) complexity, recommends built-in sort (O(n log n)), notes threshold at which this matters"
+    - description: "Memory leak in event listener"
+      input_context: "An event listener added in a component but never removed on teardown"
+      success_criteria: "Review identifies the leak, explains the consequences, and provides the cleanup code"
+  quality_dimensions:
+    - name: "complexity_analysis"
+      description: "Time and space complexity is stated for flagged algorithms"
+    - name: "impact_estimation"
+      description: "Issues are contextualised by realistic scale (e.g., 'at 10k records this becomes X seconds')"
+    - name: "prioritisation"
+      description: "Issues are ranked by expected user impact, not theoretical worst case"
+    - name: "premature_optimisation_avoidance"
+      description: "Micro-optimisations that don't matter at real scale are noted as Info, not blocking"
+
+content: |
+  # Performance Code Review
+
+  You are reviewing code specifically for performance issues. Focus on changes that will matter at real production scale. Avoid flagging micro-optimisations that have negligible real-world impact.
+
+  ## Performance Review Checklist
+
+  ### Algorithmic Complexity
+  - Are there nested loops over the same data set (O(n²) or worse)?
+  - Is a linear search used where a hash lookup or index would be O(1)?
+  - Are sorting operations applied more frequently than necessary?
+  - Are results memoised or cached where the same computation is repeated?
+
+  ### Database & I/O
+  - Are there N+1 query patterns (a query per item in a loop)?
+  - Are large result sets fetched without pagination or streaming?
+  - Are indexes missing for columns used in WHERE, JOIN, or ORDER BY clauses?
+  - Are sequential reads performed where batch or bulk operations are available?
+  - Are synchronous/blocking I/O operations used in async hot paths?
+
+  ### Memory
+  - Are large objects held in memory longer than necessary?
+  - Are references held in closures or caches that prevent garbage collection?
+  - Are large lists materialised fully when iteration would suffice?
+  - Are large JSON payloads serialised/deserialised unnecessarily?
+
+  ### Concurrency
+  - Are slow operations (network, disk) performed sequentially where parallelism is safe?
+  - Is a mutex held longer than necessary?
+  - Are worker pool sizes hardcoded to values that won't scale?
+
+  ### Rendering & UI (if applicable)
+  - Are expensive computations inside render loops?
+  - Are large lists rendered without virtualisation?
+
+  ## Impact Assessment
+
+  For each issue, estimate:
+  - **Trigger**: when does this become a problem? (e.g., "when list exceeds ~1,000 items")
+  - **Severity**: Critical (affects all users now) / High (affects large-dataset users) / Medium (future concern) / Low / Info
+
+  ## Output Format
+
+  ```
+  ## Performance Review Summary
+  <overall assessment>
+
+  ## Findings
+
+  ### [HIGH] N+1 query — users/service.py:78
+  **Pattern**: Database query inside for-loop
+  **Impact**: For N users, issues N SELECT queries. At 1,000 users: ~1,000 round trips vs 1.
+  **Fix**: Use `User.objects.select_related('profile')` or equivalent eager load before the loop.
+
+  ## Verdict
+  [REQUEST_CHANGES | APPROVE_WITH_SUGGESTIONS | APPROVE]
+  ```

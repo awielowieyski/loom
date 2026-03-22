@@ -1,0 +1,127 @@
+slug: "release-notes-enriched"
+name: "Release Notes (GitHub Enriched)"
+description: "Generate release notes enriched with GitHub PR titles, authors, and linked issues"
+category: "documentation"
+tags: ["release-notes", "changelog", "github", "pull-requests"]
+version: "1.0.0"
+cost_profile: "low"
+cost_drivers: ["github_api_calls"]
+estimated_duration: "moderate"
+extends: null
+
+dependencies:
+  mcp_servers:
+    - uri: "git"
+      required: true
+      scopes: ["read"]
+    - uri: "filesystem"
+      required: true
+      scopes: ["read", "write"]
+  apis:
+    - name: "github_api"
+      auth_type: "oauth"
+      scopes: ["repo:read", "issues:read", "pulls:read"]
+  trust_requirements:
+    data_classification: "internal"
+    network_access: true
+    privacy_impact:
+      external_data_sharing: true
+      input_logging: "none"
+      data_retention: "none"
+
+eval_spec:
+  scenarios:
+    - description: "Repository with PR-based workflow"
+      input_context: "Each commit is a merge commit from a numbered PR; 20 PRs between tags"
+      success_criteria: "Release notes use PR titles, link to PRs with #N, and credit PR authors by GitHub username"
+    - description: "Mixed direct commits and PRs"
+      input_context: "Some commits are direct pushes, others are PR merges"
+      success_criteria: "PR merges use enriched data; direct commits fall back to commit subject"
+    - description: "Issues closed by PRs"
+      input_context: "PRs contain 'Closes #N' in their bodies"
+      success_criteria: "Closed issues are listed under a separate 'Resolved Issues' section"
+  quality_dimensions:
+    - name: "pr_attribution"
+      description: "PR authors are credited by GitHub handle"
+    - name: "issue_linkage"
+      description: "Issues resolved in this release are listed"
+    - name: "graceful_fallback"
+      description: "Commits without linked PRs are still included using commit data"
+    - name: "link_correctness"
+      description: "All GitHub links are valid URLs to the correct repository"
+
+content: |
+  # Release Notes (GitHub Enriched)
+
+  You are generating release notes that combine local git history with GitHub API data to produce richer, more informative notes including PR titles, contributor attribution, and resolved issue links.
+
+  **Note:** This skill calls the GitHub API. Ensure you have a token with `repo` read access.
+
+  ## Step 1 — Determine version range
+
+  Ask for or infer `from_ref` and `to_ref` (tags or SHAs). Run `git tag --list --sort=-version:refname` to show available tags.
+
+  ## Step 2 — Get commits in range
+
+  Run:
+  ```
+  git log <from_ref>..<to_ref> --oneline --no-merges
+  ```
+
+  Also collect merge commit data:
+  ```
+  git log <from_ref>..<to_ref> --merges --format="%H|%s"
+  ```
+
+  ## Step 3 — Identify PR numbers
+
+  For each merge commit, extract the PR number. Common patterns:
+  - `Merge pull request #123 from ...`
+  - `(#123)` suffix in squash-merge subjects
+
+  ## Step 4 — Fetch PR data from GitHub
+
+  For each PR number, call:
+  ```
+  GET /repos/{owner}/{repo}/pulls/{pr_number}
+  ```
+
+  Retrieve: title, body, author login, merged_at, labels.
+
+  Parse the PR body for `Closes #N`, `Fixes #N`, `Resolves #N` patterns to collect closed issues.
+
+  ## Step 5 — Fetch closed issue details
+
+  For each issue number found in Step 4, call:
+  ```
+  GET /repos/{owner}/{repo}/issues/{issue_number}
+  ```
+
+  Retrieve: title, labels.
+
+  ## Step 6 — Categorise and format
+
+  Group by PR labels or commit type. Build Markdown output:
+
+  ```markdown
+  ## [<version>] — <date>
+
+  ### Breaking Changes
+  - <PR title> (#<N>) by @<author>
+
+  ### New Features
+  - <PR title> (#<N>) by @<author>
+
+  ### Bug Fixes
+  - <PR title> (#<N>) by @<author>
+
+  ### Resolved Issues
+  - #<N> <issue title>
+
+  ### Contributors
+  @<handle1>, @<handle2>, ...
+  ```
+
+  ## Step 7 — Write output
+
+  Offer to prepend to `CHANGELOG.md`, write to `RELEASE-<version>.md`, or print to stdout. Apply the user's choice.

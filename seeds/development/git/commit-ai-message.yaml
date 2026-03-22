@@ -1,0 +1,105 @@
+slug: "commit-ai-message"
+name: "AI-Generated Commit Message"
+description: "Use an LLM to draft a commit message with richer context from the diff"
+category: "development/git"
+tags: ["git", "commit", "llm", "ai", "conventional-commits"]
+version: "1.0.0"
+cost_profile: "low"
+cost_drivers: ["llm_inference"]
+estimated_duration: "moderate"
+extends: null
+
+dependencies:
+  mcp_servers:
+    - uri: "filesystem"
+      required: true
+      scopes: ["read"]
+    - uri: "git"
+      required: true
+      scopes: ["read", "write"]
+  apis:
+    - name: "llm_api"
+      auth_type: "api_key"
+      scopes: ["completions"]
+  trust_requirements:
+    data_classification: "internal"
+    network_access: true
+    privacy_impact:
+      external_data_sharing: true
+      input_logging: "anonymised"
+      data_retention: "transient"
+
+eval_spec:
+  scenarios:
+    - description: "Complex refactor requiring context synthesis"
+      input_context: "Large diff spanning 8 files in an authentication module, renaming patterns throughout"
+      success_criteria: "Generated message captures the intent 'rename X to Y for consistency' rather than just listing files changed"
+    - description: "Bug fix with subtle root cause"
+      input_context: "One-line diff fixing an off-by-one error in a date range calculation"
+      success_criteria: "Message explains the root cause, not just 'fix date calculation'"
+    - description: "User reviews and approves suggested message"
+      input_context: "LLM draft is presented before committing"
+      success_criteria: "User is shown the draft and asked for approval or edits before git commit runs"
+  quality_dimensions:
+    - name: "context_richness"
+      description: "Message conveys intent and motivation, not just a list of files changed"
+    - name: "spec_compliance"
+      description: "Output still follows Conventional Commits spec"
+    - name: "user_control"
+      description: "User confirms or edits the message before commit executes"
+    - name: "cost_awareness"
+      description: "Token usage stays proportional to diff size; very large diffs are summarised first"
+
+content: |
+  # AI-Generated Commit Message
+
+  You are generating a high-quality git commit message by using an LLM to reason over the diff and produce a message richer than a rule-based formatter can achieve.
+
+  **Note:** This skill sends diff content to an external LLM API. Only use it for code that is cleared for external sharing under your organisation's data policy.
+
+  ## Step 1 — Collect context
+
+  1. Run `git diff --cached` to get the staged diff.
+  2. Run `git log --oneline -10` to understand the recent commit style of this repository.
+  3. If the diff exceeds 4,000 tokens, summarise each file's changes individually before constructing the overall prompt — do not truncate silently.
+
+  ## Step 2 — Construct the LLM prompt
+
+  Send the following to the configured LLM:
+
+  ```
+  You are a senior engineer writing a git commit message.
+
+  Repository context (recent commits):
+  <recent_commits>
+
+  Staged diff:
+  <diff>
+
+  Write a commit message following Conventional Commits v1.0.0:
+  - Subject: <type>(<scope>): <description> (imperative mood, ≤72 chars)
+  - Optional body: explain *why*, not *what*
+  - Footers for BREAKING CHANGE or issue refs if applicable
+
+  Return only the commit message text, nothing else.
+  ```
+
+  ## Step 3 — Present the draft to the user
+
+  Display the LLM-generated message clearly and ask:
+  > "Does this commit message look correct? Reply 'yes' to commit, 'edit' to modify, or 'no' to abort."
+
+  If the user replies 'edit', accept their revised message. If 'no', exit without committing.
+
+  ## Step 4 — Validate the message
+
+  Before committing, verify:
+  - Subject line is ≤ 72 characters
+  - Type is one of: feat, fix, docs, style, refactor, perf, test, build, ci, chore
+  - Subject uses imperative mood
+
+  Fix any violations automatically and inform the user of changes made.
+
+  ## Step 5 — Commit
+
+  Run `git commit -m "<approved_message>"` and report the resulting commit SHA.

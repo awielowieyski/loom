@@ -1,0 +1,102 @@
+slug: "changelog-update"
+name: "Update CHANGELOG.md"
+description: "Maintain a Keep a Changelog compliant CHANGELOG.md with the latest changes"
+category: "documentation"
+tags: ["changelog", "keep-a-changelog", "git", "documentation"]
+version: "1.0.0"
+cost_profile: "free"
+cost_drivers: []
+estimated_duration: "fast"
+extends: null
+
+dependencies:
+  mcp_servers:
+    - uri: "filesystem"
+      required: true
+      scopes: ["read", "write"]
+    - uri: "git"
+      required: true
+      scopes: ["read"]
+  apis: []
+  trust_requirements:
+    data_classification: "none"
+    network_access: false
+    privacy_impact:
+      external_data_sharing: false
+      input_logging: "none"
+      data_retention: "none"
+
+eval_spec:
+  scenarios:
+    - description: "Adding entries to an existing Unreleased section"
+      input_context: "CHANGELOG.md has an [Unreleased] section; user wants to add two new features"
+      success_criteria: "Features are added under [Unreleased] > Added; existing entries are preserved"
+    - description: "Releasing the Unreleased section"
+      input_context: "User is cutting version 1.4.0; [Unreleased] section has accumulated entries"
+      success_criteria: "[Unreleased] is renamed to [1.4.0] with today's date; new empty [Unreleased] is inserted at top"
+    - description: "Creating a CHANGELOG.md from scratch"
+      input_context: "No CHANGELOG.md exists; repository has git history"
+      success_criteria: "File is created with correct header, a populated [Unreleased] section, and at least the last 3 releases reconstructed from git tags"
+  quality_dimensions:
+    - name: "spec_compliance"
+      description: "File follows Keep a Changelog v1.0.0 format exactly"
+    - name: "preservation"
+      description: "Existing entries are never deleted or reordered"
+    - name: "date_accuracy"
+      description: "Release dates match the git tag dates, not today's date"
+    - name: "link_generation"
+      description: "Version comparison links at the bottom are generated if the remote is GitHub/GitLab"
+
+content: |
+  # Update CHANGELOG.md
+
+  You are maintaining a CHANGELOG.md file following the Keep a Changelog v1.0.0 specification (https://keepachangelog.com/). The changelog is a human-curated record of notable changes per version.
+
+  ## Keep a Changelog Format
+
+  ```markdown
+  # Changelog
+
+  All notable changes to this project will be documented in this file.
+
+  The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+  and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+  ## [Unreleased]
+
+  ## [1.2.0] — 2026-01-15
+
+  ### Added
+  - New feature description
+
+  ### Fixed
+  - Bug fix description
+
+  [Unreleased]: https://github.com/owner/repo/compare/v1.2.0...HEAD
+  [1.2.0]: https://github.com/owner/repo/compare/v1.1.0...v1.2.0
+  ```
+
+  Valid subsection types: Added, Changed, Deprecated, Removed, Fixed, Security.
+
+  ## Step 1 — Determine the operation
+
+  Ask the user what they want to do:
+  1. **Add entries** to [Unreleased]
+  2. **Release [Unreleased]** as a new version
+  3. **Create** a new CHANGELOG.md
+
+  ## Step 2a — Adding entries
+
+  If adding entries: ask for the type (Added/Changed/Deprecated/Removed/Fixed/Security) and description. Insert under the appropriate subsection in [Unreleased]. If the subsection doesn't exist, create it.
+
+  ## Step 2b — Releasing
+
+  If releasing: ask for the new version number. Confirm it follows semantic versioning. Rename `[Unreleased]` to `[<version>] — <date>` (use `git log -1 --format=%ci HEAD` for the date if tagging now, otherwise today's date). Insert a fresh `## [Unreleased]` at the top. Update the comparison links at the bottom.
+
+  ## Step 2c — Creating from scratch
+
+  Run `git tag --list --sort=-version:refname` to find the most recent tags. Run `git log` to find commit history. Reconstruct entries for up to the last 3 releases using commit messages. Ask the user to review and edit before writing.
+
+  ## Step 3 — Write the file
+
+  Write the updated CHANGELOG.md. Show a diff of changes made.

@@ -1,0 +1,110 @@
+slug: "release-notes-local"
+name: "Release Notes (Local Git)"
+description: "Generate release notes from git log between two tags, no network required"
+category: "documentation"
+tags: ["release-notes", "changelog", "git", "offline"]
+version: "1.0.0"
+cost_profile: "free"
+cost_drivers: []
+estimated_duration: "fast"
+extends: null
+
+dependencies:
+  mcp_servers:
+    - uri: "git"
+      required: true
+      scopes: ["read"]
+    - uri: "filesystem"
+      required: true
+      scopes: ["read", "write"]
+  apis: []
+  trust_requirements:
+    data_classification: "none"
+    network_access: false
+    privacy_impact:
+      external_data_sharing: false
+      input_logging: "none"
+      data_retention: "none"
+
+eval_spec:
+  scenarios:
+    - description: "Release between two named tags"
+      input_context: "Tags v1.2.0 and v1.3.0 exist; 12 commits between them"
+      success_criteria: "Notes list changes grouped by type (feat/fix/other), with commit subjects and authors"
+    - description: "First release from initial commit"
+      input_context: "Only one tag exists; user wants notes from the beginning"
+      success_criteria: "Notes cover all commits from repository root to the tag"
+    - description: "Release with breaking changes"
+      input_context: "Some commits have 'BREAKING CHANGE' in footer"
+      success_criteria: "Breaking changes appear in a dedicated section at the top of the release notes"
+  quality_dimensions:
+    - name: "grouping"
+      description: "Changes are grouped by semantic type (features, fixes, breaking changes)"
+    - name: "completeness"
+      description: "Every commit in the range is accounted for"
+    - name: "clarity"
+      description: "Each entry is human-readable without requiring the reader to look up the commit"
+    - name: "format_consistency"
+      description: "Output is consistent Markdown suitable for a CHANGELOG.md or GitHub release"
+
+content: |
+  # Release Notes (Local Git)
+
+  You are generating release notes from the local git history. No network access is required. The output is Markdown formatted for a CHANGELOG.md or GitHub release body.
+
+  ## Step 1 — Determine the version range
+
+  Ask the user for (or infer from context):
+  - **from_ref**: the previous release tag (e.g., `v1.2.0`)
+  - **to_ref**: the new release tag or `HEAD` (e.g., `v1.3.0`)
+
+  Run `git tag --list --sort=-version:refname` to show available tags if the user is unsure.
+
+  ## Step 2 — Collect commits in range
+
+  Run:
+  ```
+  git log <from_ref>..<to_ref> --oneline --no-merges
+  ```
+
+  Also run with `--format="%H|%s|%an|%ae|%b"` to get full subjects, authors, and bodies (for BREAKING CHANGE detection).
+
+  ## Step 3 — Parse and categorise
+
+  Parse each commit message as Conventional Commits where possible. Categorise into buckets:
+  - **Breaking Changes** — commits with `BREAKING CHANGE:` footer or `!` after type
+  - **New Features** — type `feat`
+  - **Bug Fixes** — type `fix`
+  - **Performance** — type `perf`
+  - **Other Changes** — all other types (docs, refactor, test, chore, etc.)
+
+  Merge commits are excluded unless they represent significant milestones.
+
+  ## Step 4 — Format as Markdown
+
+  ```markdown
+  ## [<version>] — <date>
+
+  ### Breaking Changes
+  - <description> (by @<author>)
+
+  ### New Features
+  - <description> (by @<author>)
+
+  ### Bug Fixes
+  - <description> (by @<author>)
+
+  ### Other Changes
+  - <description> (by @<author>)
+  ```
+
+  Use today's date from `git log -1 --format=%ci <to_ref>` or the system date. Include the commit short hash as a reference if the target is not a GitHub release (e.g., `[abc1234]`).
+
+  ## Step 5 — Write output
+
+  Ask the user where to write the output:
+  1. Prepend to `CHANGELOG.md`
+  2. Write to a separate file `RELEASE-<version>.md`
+  3. Print to stdout only
+
+  Make the requested change and confirm.

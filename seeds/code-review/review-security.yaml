@@ -1,0 +1,119 @@
+slug: "review-security"
+name: "Security Code Review"
+description: "Review code for security vulnerabilities with OWASP-aligned checks"
+category: "code-review"
+tags: ["code-review", "security", "owasp", "vulnerability", "hardening"]
+version: "1.0.0"
+cost_profile: "low"
+cost_drivers: []
+estimated_duration: "moderate"
+extends: "loom://review-pull-request@1.0.0"
+
+dependencies:
+  mcp_servers:
+    - uri: "filesystem"
+      required: true
+      scopes: ["read"]
+    - uri: "git"
+      required: true
+      scopes: ["read"]
+  apis: []
+  trust_requirements:
+    data_classification: "none"
+    network_access: false
+    privacy_impact:
+      external_data_sharing: false
+      input_logging: "none"
+      data_retention: "none"
+
+eval_spec:
+  scenarios:
+    - description: "SQL injection vulnerability in user input"
+      input_context: "A search endpoint concatenates user input directly into a SQL query string"
+      success_criteria: "Review flags the injection, rates it as Critical, and provides a parameterised query fix"
+    - description: "Hardcoded secret in source"
+      input_context: "A commit adds a database password as a string literal in configuration"
+      success_criteria: "Review flags the secret as Critical, suggests environment variable pattern, and recommends git history remediation"
+    - description: "Clean authentication implementation"
+      input_context: "A JWT verification function using a well-audited library"
+      success_criteria: "Review confirms algorithm is pinned (not 'none'), expiry is checked, and approves"
+  quality_dimensions:
+    - name: "cvss_severity"
+      description: "Each finding includes a severity rating (Critical/High/Medium/Low/Info)"
+    - name: "owasp_reference"
+      description: "Findings reference the relevant OWASP Top 10 category where applicable"
+    - name: "remediation_clarity"
+      description: "Each finding includes a concrete, implementable fix — not just 'use a library'"
+    - name: "false_positive_restraint"
+      description: "Only genuine vulnerabilities are flagged; theoretical issues are noted as Low/Info"
+
+content: |
+  # Security Code Review
+
+  This skill extends the base Pull Request review with a deep security-focused pass using OWASP Top 10 and common vulnerability patterns. All base review steps apply; this skill adds the security checklist.
+
+  ## Security Checklist
+
+  Run these checks against the changed code:
+
+  ### Injection (OWASP A03)
+  - Are user inputs used in SQL, NoSQL, LDAP, OS commands, or XML queries?
+  - Are parameterised queries or prepared statements used everywhere?
+  - Is ORM used safely (no raw query string concatenation)?
+
+  ### Broken Authentication (OWASP A07)
+  - Are passwords hashed with bcrypt, scrypt, or Argon2 (not MD5/SHA1)?
+  - Are JWTs verified with a pinned algorithm (not `alg: none`)?
+  - Are session tokens sufficiently random and invalidated on logout?
+
+  ### Sensitive Data Exposure (OWASP A02)
+  - Are secrets, API keys, or passwords hardcoded in source?
+  - Is sensitive data logged (passwords, PII, tokens)?
+  - Is sensitive data transmitted over unencrypted channels?
+
+  ### Broken Access Control (OWASP A01)
+  - Is authorisation checked at the endpoint, not just in the UI?
+  - Can a user access another user's data by changing an ID?
+  - Are admin endpoints protected beyond just authentication?
+
+  ### Security Misconfiguration (OWASP A05)
+  - Are debug modes, verbose errors, or stack traces enabled in code?
+  - Are CORS origins restricted to known domains?
+  - Are security headers set (CSP, HSTS, X-Frame-Options)?
+
+  ### Cross-Site Scripting (OWASP A03 — for web UIs)
+  - Is user-supplied HTML sanitised before rendering?
+  - Is innerHTML or equivalent set with unescaped, untrusted input?
+  - Recommend DOMPurify or server-side escaping where raw HTML is rendered.
+
+  ### Dependency Vulnerabilities (OWASP A06)
+  - Are new dependencies added? Note them for a separate CVE check.
+
+  ## Severity Rating
+
+  Rate each finding:
+  - **Critical** — exploitable without authentication, data loss or RCE risk
+  - **High** — exploitable with authentication, significant data risk
+  - **Medium** — requires specific conditions, moderate risk
+  - **Low** — defence-in-depth improvement
+  - **Info** — observation, no direct risk
+
+  ## Output Format
+
+  ```
+  ## Security Review Summary
+  <overall posture>
+
+  ## Findings
+
+  ### [CRITICAL] SQL Injection — auth/login.py:34
+  **OWASP**: A03 Injection
+  **Description**: User email is concatenated into SQL string.
+  **Fix**: Use parameterised query: `cursor.execute("SELECT * FROM users WHERE email = %s", (email,))`
+
+  ### [INFO] Missing security headers — app.py:12
+  ...
+
+  ## Verdict
+  [REQUEST_CHANGES | APPROVE]
+  ```

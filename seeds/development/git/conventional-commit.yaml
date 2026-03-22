@@ -1,0 +1,102 @@
+slug: "conventional-commit"
+name: "Conventional Commit"
+description: "Generate a Conventional Commits-compliant commit message from staged changes"
+category: "development/git"
+tags: ["git", "commit", "conventional-commits", "offline"]
+version: "1.0.0"
+cost_profile: "free"
+cost_drivers: []
+estimated_duration: "fast"
+extends: null
+
+dependencies:
+  mcp_servers:
+    - uri: "filesystem"
+      required: true
+      scopes: ["read"]
+    - uri: "git"
+      required: true
+      scopes: ["read", "write"]
+  apis: []
+  trust_requirements:
+    data_classification: "none"
+    network_access: false
+    privacy_impact:
+      external_data_sharing: false
+      input_logging: "none"
+      data_retention: "none"
+
+eval_spec:
+  scenarios:
+    - description: "Single-file bug fix"
+      input_context: "Staged diff fixes a null-pointer crash in user authentication"
+      success_criteria: "Message starts with 'fix(auth):' and summarises the change in imperative mood under 72 chars"
+    - description: "Multi-file feature addition"
+      input_context: "Staged diff adds a new /health endpoint and a corresponding test file"
+      success_criteria: "Message starts with 'feat(api):' and body lists affected files, footer references any linked issue"
+    - description: "Refactoring with no behaviour change"
+      input_context: "Staged diff renames internal variables and extracts a helper function"
+      success_criteria: "Message starts with 'refactor:' and explicitly states no behaviour change"
+  quality_dimensions:
+    - name: "spec_compliance"
+      description: "Message follows Conventional Commits v1.0 spec (type, optional scope, description)"
+    - name: "imperative_mood"
+      description: "Subject line uses imperative mood (e.g. 'add' not 'added')"
+    - name: "length"
+      description: "Subject line is 72 characters or fewer"
+    - name: "accuracy"
+      description: "Message accurately reflects the actual diff without hallucinating changes"
+
+content: |
+  # Conventional Commit
+
+  You are generating a git commit message that strictly follows the Conventional Commits v1.0.0 specification (https://www.conventionalcommits.org/).
+
+  ## Step 1 — Inspect the staged changes
+
+  Run `git diff --cached` to retrieve the full staged diff. If nothing is staged, ask the user whether to stage all tracked changes first. Do not proceed if there is nothing to commit.
+
+  ## Step 2 — Determine the commit type
+
+  Choose the single most appropriate type from the list below based on the primary intent of the change:
+
+  - **feat** — a new feature visible to users or callers
+  - **fix** — a bug fix
+  - **docs** — documentation only (no code logic changes)
+  - **style** — formatting, whitespace, missing semi-colons (no logic changes)
+  - **refactor** — code restructuring without feature change or bug fix
+  - **perf** — performance improvement
+  - **test** — adding or correcting tests
+  - **build** — build system or dependency changes
+  - **ci** — CI/CD configuration changes
+  - **chore** — maintenance tasks that don't affect source or tests
+
+  If the diff contains multiple unrelated changes, note this and suggest the user split the commit.
+
+  ## Step 3 — Determine the optional scope
+
+  The scope is a noun in parentheses identifying the affected module, subsystem, or component — for example `auth`, `api`, `db`, `cli`. Use the directory name or logical grouping. Omit scope if the change is truly cross-cutting.
+
+  ## Step 4 — Write the subject line
+
+  Format: `<type>(<scope>): <description>`
+
+  Rules:
+  - Use imperative mood: "add" not "adds" or "added"
+  - Do not capitalise the first letter of the description
+  - No period at the end
+  - Maximum 72 characters total
+
+  ## Step 5 — Write the optional body
+
+  Include a body paragraph when the subject alone is insufficient to understand *why* the change was made. Wrap lines at 72 characters. Separate the body from the subject with a blank line. Focus on motivation and context, not mechanics.
+
+  ## Step 6 — Add footers if applicable
+
+  - Breaking changes: `BREAKING CHANGE: <description>` as the first footer
+  - Issue references: `Closes #123` or `Refs #456`
+  - Co-authors: `Co-authored-by: Name <email>`
+
+  ## Step 7 — Commit
+
+  Run `git commit -m "<message>"` using a heredoc or quoted string to preserve newlines. Confirm the commit SHA after success.
