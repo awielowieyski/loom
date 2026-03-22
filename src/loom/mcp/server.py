@@ -1,15 +1,14 @@
 """MCP server exposing Loom capability resolution tools."""
 
+import asyncio
+import atexit
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from loom.db.repositories.category_repo import CategoryRepo
-from loom.db.repositories.skill_repo import SkillRepo
 from loom.models.common import CostProfile, TrustTier
 from loom.models.resolution import ResolutionContext
-from loom.services.discovery import DiscoveryService
-from loom.services.registry import RegistryService
+from loom.services.container import ServiceContainer, close_container, create_container
 
 mcp: FastMCP = FastMCP(
     name="Loom",
@@ -22,59 +21,55 @@ mcp: FastMCP = FastMCP(
     ),
 )
 
-_services: dict[str, Any] = {}
+_container: ServiceContainer | None = None
 
 
-async def _get_services() -> dict[str, Any]:
-    """Lazy-initialise shared services on first call."""
-    if not _services:
-        from loom.db.engine import create_pool
-        from loom.providers.embeddings import create_embedder
+async def _get_container() -> ServiceContainer:
+    """Lazy-initialise the shared container on first call."""
+    global _container  # noqa: PLW0603
+    if _container is None:
         from loom.settings import LoomSettings
 
         settings = LoomSettings()
-        pool = await create_pool(settings.database.url)
-        embedder = create_embedder(settings.embedding)
+        _container = await create_container(settings)
+    return _container
 
-        conn = await pool.acquire()
-        skill_repo = SkillRepo(conn)
-        category_repo = CategoryRepo(conn)
-        discovery = DiscoveryService(skill_repo=skill_repo, embedder=embedder)
-        registry = RegistryService(
-            skill_repo=skill_repo,
-            category_repo=category_repo,
-            eval_service=None,  # type: ignore[arg-type]
-        )
-        _services["pool"] = pool
-        _services["conn"] = conn
-        _services["discovery"] = discovery
-        _services["registry"] = registry
-        _services["category_repo"] = category_repo
 
-    return _services
+async def _shutdown() -> None:
+    """Close pool on shutdown."""
+    global _container  # noqa: PLW0603
+    if _container is not None:
+        await close_container(_container)
+        _container = None
 
 
 @mcp.tool()  # type: ignore[misc]
 async def resolve(task_description: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
     """Resolve the best skill for a natural-language task description."""
-    services = await _get_services()
-    discovery: DiscoveryService = services["discovery"]
+    container = await _get_container()
 
     resolution_context: ResolutionContext | None = None
     if context is not None:
         resolution_context = ResolutionContext.model_validate(context)
 
-    result = await discovery.resolve(task_description, context=resolution_context)
+    async with container.pool.acquire() as conn:
+        skill_repo = container.skill_repo_factory(conn)
+        discovery = container.discovery_service_factory(skill_repo)
+        result = await discovery.resolve(task_description, context=resolution_context)
     return result.model_dump()
 
 
 @mcp.tool()  # type: ignore[misc]
 async def get_skill(slug: str, version: str | None = None) -> dict[str, Any]:
     """Retrieve a skill by slug and optional version."""
-    services = await _get_services()
-    registry: RegistryService = services["registry"]
+    container = await _get_container()
 
-    skill = await registry.get_skill(slug, version=version)
+    async with container.pool.acquire() as conn:
+        skill_repo = container.skill_repo_factory(conn)
+        category_repo = container.category_repo_factory(conn)
+        registry = container.registry_service_factory(skill_repo, category_repo)
+        skill = await registry.get_skill(slug, version=version)
+
     if skill is None:
         return {"error": "not_found", "message": f"Skill {slug!r} not found"}
     return skill.model_dump()
@@ -88,23 +83,26 @@ async def search(
     cost_budget: str | None = None,
 ) -> list[dict[str, Any]]:
     """Search skills by query with optional filters."""
-    services = await _get_services()
-    discovery: DiscoveryService = services["discovery"]
+    container = await _get_container()
 
     tier: TrustTier | None = TrustTier(trust_tier) if trust_tier else None
     budget: CostProfile | None = CostProfile(cost_budget) if cost_budget else None
 
-    results = await discovery.search(query=query, trust_tier=tier, cost_budget=budget)
+    async with container.pool.acquire() as conn:
+        skill_repo = container.skill_repo_factory(conn)
+        discovery = container.discovery_service_factory(skill_repo)
+        results = await discovery.search(query=query, trust_tier=tier, cost_budget=budget)
     return [s.model_dump() for s in results]
 
 
 @mcp.tool()  # type: ignore[misc]
 async def list_categories() -> list[dict[str, Any]]:
     """List all skill categories."""
-    services = await _get_services()
-    category_repo: CategoryRepo = services["category_repo"]
+    container = await _get_container()
 
-    categories = await category_repo.list_all()
+    async with container.pool.acquire() as conn:
+        category_repo = container.category_repo_factory(conn)
+        categories = await category_repo.list_all()
     return [c.model_dump() for c in categories]
 
 
@@ -114,6 +112,19 @@ def main() -> None:
 
     settings = LoomSettings()
     transport = settings.mcp.transports[0].type if settings.mcp.transports else "stdio"
+
+    # Register cleanup for pool on exit
+    def _cleanup() -> None:
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(_shutdown())
+            else:
+                loop.run_until_complete(_shutdown())
+        except RuntimeError:
+            pass
+
+    atexit.register(_cleanup)
     mcp.run(transport=transport)
 
 

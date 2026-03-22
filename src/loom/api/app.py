@@ -5,8 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from loom.db.engine import create_pool
-from loom.providers.embeddings import create_embedder
+from loom.services.container import close_container, create_container
 from loom.settings import LoomSettings
 
 
@@ -14,12 +13,12 @@ from loom.settings import LoomSettings
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Create shared resources on startup; clean up on shutdown."""
     settings = LoomSettings()
-    app.state.pool = await create_pool(settings.database.url)
-    app.state.embedder = create_embedder(settings.embedding)
+    container = await create_container(settings)
+    app.state.container = container
     try:
         yield
     finally:
-        await app.state.pool.close()
+        await close_container(container)
 
 
 def create_app() -> FastAPI:

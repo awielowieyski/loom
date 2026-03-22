@@ -8,6 +8,21 @@ import asyncpg
 from loom.models.common import CostProfile, DependencyDeclaration, EvalSpec, Scope, TrustTier
 from loom.models.skill import Skill, SkillSummary, SkillVersion
 
+# Full column list for skills table (21 columns)
+_SKILL_COLUMNS = (
+    "id, slug, name, description, content, category_id, tags, scope, "
+    "version, author_id, signature, trust_tier, cost_profile, "
+    "cost_drivers, estimated_duration, dependencies, eval_spec, "
+    "extends, embedding, created_at, updated_at"
+)
+
+# Lighter column list for ranking / summary use — excludes content, embedding, eval_spec
+_SUMMARY_COLUMNS = (
+    "id, slug, name, description, category_id, tags, scope, version, "
+    "author_id, trust_tier, cost_profile, cost_drivers, "
+    "estimated_duration, dependencies, extends, created_at, updated_at"
+)
+
 
 def _row_to_skill(row: asyncpg.Record) -> Skill:
     d = dict(row)
@@ -17,6 +32,23 @@ def _row_to_skill(row: asyncpg.Record) -> Skill:
         embedding = [float(x) for x in str(embedding).strip("[]").split(",")]
     d["embedding"] = embedding
     return Skill(**d)
+
+
+def _row_to_summary(row: asyncpg.Record) -> SkillSummary:
+    """Build a SkillSummary from a row that has at least the summary columns."""
+    d = dict(row)
+    return SkillSummary(
+        id=d["id"],
+        slug=d["slug"],
+        name=d["name"],
+        description=d["description"],
+        category_id=d["category_id"],
+        tags=d["tags"],
+        version=d["version"],
+        trust_tier=d["trust_tier"],
+        cost_profile=d["cost_profile"],
+        estimated_duration=d["estimated_duration"],
+    )
 
 
 class SkillRepo:
@@ -54,7 +86,7 @@ class SkillRepo:
 
         # Insert skill row
         row = await self._conn.fetchrow(
-            """
+            f"""
             INSERT INTO skills (
                 slug, name, description, content, category_id, tags, scope, version,
                 author_id, signature, trust_tier, cost_profile, cost_drivers,
@@ -64,10 +96,7 @@ class SkillRepo:
                 $9, $10, $11, $12, $13,
                 $14, $15, $16, $17, $18::vector
             )
-            RETURNING id, slug, name, description, content, category_id, tags, scope,
-                      version, author_id, signature, trust_tier, cost_profile,
-                      cost_drivers, estimated_duration, dependencies, eval_spec,
-                      extends, embedding, created_at, updated_at
+            RETURNING {_SKILL_COLUMNS}
             """,
             slug,
             name,
@@ -203,10 +232,7 @@ class SkillRepo:
             f"""
             UPDATE skills SET {", ".join(set_parts)}, updated_at = now()
             WHERE id = $1
-            RETURNING id, slug, name, description, content, category_id, tags, scope,
-                      version, author_id, signature, trust_tier, cost_profile,
-                      cost_drivers, estimated_duration, dependencies, eval_spec,
-                      extends, embedding, created_at, updated_at
+            RETURNING {_SKILL_COLUMNS}
             """,  # noqa: S608
             *params,
         )
@@ -233,13 +259,7 @@ class SkillRepo:
             )
         else:
             row = await self._conn.fetchrow(
-                """
-                SELECT id, slug, name, description, content, category_id, tags, scope,
-                       version, author_id, signature, trust_tier, cost_profile,
-                       cost_drivers, estimated_duration, dependencies, eval_spec,
-                       extends, embedding, created_at, updated_at
-                FROM skills WHERE slug = $1
-                """,
+                f"SELECT {_SKILL_COLUMNS} FROM skills WHERE slug = $1",
                 slug,
             )
         if row is None:
@@ -249,13 +269,7 @@ class SkillRepo:
     async def get_by_id(self, skill_id: uuid_mod.UUID) -> Skill | None:
         """Return a skill by id."""
         row = await self._conn.fetchrow(
-            """
-            SELECT id, slug, name, description, content, category_id, tags, scope,
-                   version, author_id, signature, trust_tier, cost_profile,
-                   cost_drivers, estimated_duration, dependencies, eval_spec,
-                   extends, embedding, created_at, updated_at
-            FROM skills WHERE id = $1
-            """,
+            f"SELECT {_SKILL_COLUMNS} FROM skills WHERE id = $1",
             skill_id,
         )
         if row is None:
@@ -313,10 +327,7 @@ class SkillRepo:
         where = f"WHERE {' AND '.join(conditions)}"
         rows = await self._conn.fetch(
             f"""
-            SELECT id, slug, name, description, content, category_id, tags, scope,
-                   version, author_id, signature, trust_tier, cost_profile,
-                   cost_drivers, estimated_duration, dependencies, eval_spec,
-                   extends, embedding, created_at, updated_at
+            SELECT {_SKILL_COLUMNS}
             FROM skills {where}
             ORDER BY embedding <=> $1::vector
             LIMIT ${len(params)}
@@ -324,3 +335,35 @@ class SkillRepo:
             *params,
         )
         return [_row_to_skill(row) for row in rows]
+
+    async def vector_search_summary(
+        self,
+        query_embedding: list[float],
+        limit: int = 10,
+        category_id: uuid_mod.UUID | None = None,
+        trust_tier: TrustTier | None = None,
+    ) -> list[SkillSummary]:
+        """Return skill summaries ordered by vector similarity (lightweight)."""
+        conditions: list[str] = ["embedding IS NOT NULL"]
+        params: list[Any] = [str(query_embedding)]
+
+        if category_id is not None:
+            params.append(category_id)
+            conditions.append(f"category_id = ${len(params)}")
+
+        if trust_tier is not None:
+            params.append(trust_tier.value)
+            conditions.append(f"trust_tier = ${len(params)}")
+
+        params.append(limit)
+        where = f"WHERE {' AND '.join(conditions)}"
+        rows = await self._conn.fetch(
+            f"""
+            SELECT {_SUMMARY_COLUMNS}
+            FROM skills {where}
+            ORDER BY embedding <=> $1::vector
+            LIMIT ${len(params)}
+            """,  # noqa: S608
+            *params,
+        )
+        return [_row_to_summary(row) for row in rows]

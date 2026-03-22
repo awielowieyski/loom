@@ -4,9 +4,35 @@ import uuid as uuid_mod
 
 from loom.db.repositories.category_repo import CategoryRepo
 from loom.db.repositories.skill_repo import SkillRepo
-from loom.models.common import CostProfile, DependencyDeclaration, EvalSpec, TrustTier
+from loom.models.common import (
+    CostProfile,
+    DependencyDeclaration,
+    EstimatedDuration,
+    EvalSpec,
+    Scope,
+    TrustTier,
+)
 from loom.models.skill import Skill, SkillCreate, SkillSummary, SkillUpdate
 from loom.services.eval import EvalService
+
+
+def _coerce_duration(value: EstimatedDuration | str | None, fallback: str) -> str:
+    """Safely extract a string value from an EstimatedDuration, str, or None."""
+    if value is None:
+        return fallback
+    return value.value if isinstance(value, EstimatedDuration) else str(value)
+
+
+def _coerce_cost_profile(value: CostProfile | str | None, fallback: CostProfile) -> CostProfile:
+    """Coerce a CostProfile value, returning the fallback when None."""
+    if value is None:
+        return fallback
+    return value if isinstance(value, CostProfile) else CostProfile(value)
+
+
+def _coerce_scope(value: Scope | str) -> str:
+    """Extract the string value from a Scope enum or pass through."""
+    return value.value if isinstance(value, Scope) else str(value)
 
 
 class RegistryService:
@@ -55,9 +81,7 @@ class RegistryService:
             trust_tier=data.trust_tier,
             cost_profile=data.cost_profile,
             cost_drivers=data.cost_drivers,
-            estimated_duration=data.estimated_duration.value
-            if hasattr(data.estimated_duration, "value")
-            else data.estimated_duration,
+            estimated_duration=_coerce_duration(data.estimated_duration, "fast"),
             extends=data.extends,
             embedding=embedding,
         )
@@ -77,16 +101,10 @@ class RegistryService:
         content = data.content if data.content is not None else existing.content
         description = data.description if data.description is not None else existing.description
         tags = data.tags if data.tags is not None else existing.tags
-        cost_profile_val = (
-            data.cost_profile if data.cost_profile is not None else existing.cost_profile
-        )
+        cost_profile_enum = _coerce_cost_profile(data.cost_profile, existing.cost_profile)
         cost_drivers = data.cost_drivers if data.cost_drivers is not None else existing.cost_drivers
-        estimated_duration_val = (
-            data.estimated_duration.value
-            if hasattr(data.estimated_duration, "value") and data.estimated_duration is not None
-            else data.estimated_duration
-            if data.estimated_duration is not None
-            else existing.estimated_duration
+        estimated_duration_val = _coerce_duration(
+            data.estimated_duration, existing.estimated_duration
         )
         dependencies_obj = data.dependencies if data.dependencies is not None else None
         eval_spec_obj = data.eval_spec if data.eval_spec is not None else None
@@ -97,12 +115,6 @@ class RegistryService:
             dependencies_obj.model_dump() if dependencies_obj is not None else existing.dependencies
         )
         eval_dict = eval_spec_obj.model_dump() if eval_spec_obj is not None else existing.eval_spec
-
-        cost_profile_enum = (
-            cost_profile_val
-            if isinstance(cost_profile_val, CostProfile)
-            else CostProfile(cost_profile_val)
-        )
 
         updated = await self._skill_repo.update(
             existing.id,

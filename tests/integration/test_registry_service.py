@@ -23,20 +23,10 @@ async def registry(db_conn: asyncpg.Connection) -> RegistryService:
 
 
 @pytest.fixture
-async def setup(db_conn: asyncpg.Connection, registry: RegistryService) -> uuid.UUID:
-    """Create prerequisite category and user, return author_id."""
+async def setup(db_conn: asyncpg.Connection, test_author_id: uuid.UUID) -> uuid.UUID:
+    """Create prerequisite category, return author_id."""
     await CategoryRepo(db_conn).create(CategoryCreate(slug="code-gen", name="Code Generation"))
-    author_id = await db_conn.fetchval(
-        """
-        INSERT INTO users (handle, email, api_key, role)
-        VALUES ($1, $2, $3, 'contributor')
-        RETURNING id
-        """,
-        f"user-{uuid.uuid4().hex[:8]}",
-        f"user-{uuid.uuid4().hex[:8]}@example.com",
-        f"key-{uuid.uuid4().hex}",
-    )
-    return author_id  # type: ignore[return-value]
+    return test_author_id
 
 
 async def _make_skill(**overrides: object) -> SkillCreate:

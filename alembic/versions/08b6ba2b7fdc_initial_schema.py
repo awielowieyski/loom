@@ -175,6 +175,13 @@ def upgrade() -> None:
     op.create_index("idx_skill_versions_skill", "skill_versions", ["skill_id"], unique=False)
     # ### end Alembic commands ###
 
+    # Seed system user for built-in skills
+    op.execute(
+        "INSERT INTO users (id, handle, email, api_key, role) VALUES "
+        "('00000000-0000-0000-0000-000000000001', 'system', 'system@loom.dev', "
+        "'system-internal', 'maintainer')"
+    )
+
 
 def downgrade() -> None:
     """Downgrade schema."""

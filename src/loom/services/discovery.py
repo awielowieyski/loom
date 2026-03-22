@@ -1,5 +1,6 @@
 """DiscoveryService: embed queries and rank candidates with constraint awareness."""
 
+import uuid
 from typing import TYPE_CHECKING, Any
 
 from loom.models.common import CostProfile, TrustTier
@@ -14,21 +15,6 @@ from loom.models.skill import Skill, SkillSummary
 
 if TYPE_CHECKING:
     from loom.db.repositories.skill_repo import SkillRepo
-
-
-def _skill_to_summary(skill: Skill) -> SkillSummary:
-    return SkillSummary(
-        id=skill.id,
-        slug=skill.slug,
-        name=skill.name,
-        description=skill.description,
-        category_id=skill.category_id,
-        tags=skill.tags,
-        version=skill.version,
-        trust_tier=skill.trust_tier,
-        cost_profile=skill.cost_profile,
-        estimated_duration=skill.estimated_duration,
-    )
 
 
 def _score(skill: Skill, context: ResolutionContext | None) -> float:
@@ -82,7 +68,7 @@ class DiscoveryService:
             if trust_floor is not None and not skill.trust_tier.meets_floor(trust_floor):
                 rejected.append(
                     RejectedCandidate(
-                        skill=_skill_to_summary(skill),
+                        skill=skill.to_summary(),
                         reason=f"Trust tier {skill.trust_tier.value!r} below floor "
                         f"{trust_floor.value!r}",
                     )
@@ -94,21 +80,25 @@ class DiscoveryService:
             return ResolutionError(
                 error="no_match",
                 message="No skills passed trust floor constraint",
-                available_at_lower_tier=[_skill_to_summary(s) for s in candidates],
+                available_at_lower_tier=[s.to_summary() for s in candidates],
             )
 
-        # 4. Soft ranking by score
-        scored = sorted(accepted, key=lambda s: _score(s, context), reverse=True)
-        best = scored[0]
+        # 4. Soft ranking by score — compute once, reuse for alternatives
+        scored = sorted(
+            [(s, _score(s, context)) for s in accepted],
+            key=lambda pair: pair[1],
+            reverse=True,
+        )
+        best, _best_score = scored[0]
         rest = scored[1:4]  # top 3 alternatives
 
         alternatives = [
             Alternative(
-                skill=_skill_to_summary(s),
-                match_score=_score(s, context),
+                skill=s.to_summary(),
+                match_score=score,
                 tradeoff="Alternative skill",
             )
-            for s in rest
+            for s, score in rest
         ]
 
         # 5. Build rationale
@@ -128,7 +118,7 @@ class DiscoveryService:
     async def search(
         self,
         query: str,
-        category_id: None = None,
+        category_id: uuid.UUID | None = None,
         trust_tier: TrustTier | None = None,
         cost_budget: CostProfile | None = None,
     ) -> list[SkillSummary]:
@@ -139,6 +129,7 @@ class DiscoveryService:
         candidates = await self._skill_repo.vector_search(
             query_embedding,
             limit=20,
+            category_id=category_id,
             trust_tier=trust_tier,
         )
 
@@ -146,6 +137,6 @@ class DiscoveryService:
         for skill in candidates:
             if cost_budget is not None and not skill.cost_profile.within_budget(cost_budget):
                 continue
-            results.append(_skill_to_summary(skill))
+            results.append(skill.to_summary())
 
         return results

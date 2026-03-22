@@ -8,55 +8,48 @@ from fastapi import Depends, Request
 
 from loom.db.repositories.category_repo import CategoryRepo
 from loom.db.repositories.skill_repo import SkillRepo
+from loom.services.container import ServiceContainer
 from loom.services.discovery import DiscoveryService
-from loom.services.eval import EvalService
 from loom.services.registry import RegistryService
 
 
-def get_pool(request: Request) -> asyncpg.Pool:
-    """Return the connection pool from app state."""
-    pool: asyncpg.Pool = request.app.state.pool
-    return pool
+def get_container(request: Request) -> ServiceContainer:
+    """Return the service container from app state."""
+    return request.app.state.container  # type: ignore[no-any-return]
 
 
 async def get_conn(
-    pool: Annotated[asyncpg.Pool, Depends(get_pool)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> AsyncIterator[asyncpg.Connection]:
     """Acquire a connection from the pool, yield it, then release."""
-    async with pool.acquire() as conn:
+    async with container.pool.acquire() as conn:
         yield conn
 
 
 def get_skill_repo(
     conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> SkillRepo:
-    return SkillRepo(conn)
+    return container.skill_repo_factory(conn)
 
 
 def get_category_repo(
     conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> CategoryRepo:
-    return CategoryRepo(conn)
-
-
-def get_eval_service() -> EvalService:
-    return EvalService()
+    return container.category_repo_factory(conn)
 
 
 def get_registry_service(
     skill_repo: Annotated[SkillRepo, Depends(get_skill_repo)],
     category_repo: Annotated[CategoryRepo, Depends(get_category_repo)],
-    eval_service: Annotated[EvalService, Depends(get_eval_service)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> RegistryService:
-    return RegistryService(
-        skill_repo=skill_repo,
-        category_repo=category_repo,
-        eval_service=eval_service,
-    )
+    return container.registry_service_factory(skill_repo, category_repo)
 
 
 def get_discovery_service(
-    request: Request,
     skill_repo: Annotated[SkillRepo, Depends(get_skill_repo)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> DiscoveryService:
-    return DiscoveryService(skill_repo=skill_repo, embedder=request.app.state.embedder)
+    return container.discovery_service_factory(skill_repo)

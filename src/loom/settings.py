@@ -1,7 +1,7 @@
 """Application settings loaded from loom.yaml with env var overrides."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel
@@ -13,13 +13,13 @@ class DatabaseConfig(BaseModel):
 
 
 class EmbeddingConfig(BaseModel):
-    provider: str = "openai"
+    provider: Literal["openai"] = "openai"
     model: str = "text-embedding-3-small"
     dimensions: int = 1536
 
 
 class LLMConfig(BaseModel):
-    provider: str = "openrouter"
+    provider: Literal["openai", "openrouter"] = "openrouter"
     model: str = "google/gemini-3-flash"
 
 

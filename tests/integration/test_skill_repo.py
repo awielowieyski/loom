@@ -13,24 +13,13 @@ from loom.models.skill import SkillSummary
 
 
 @pytest.fixture
-async def repo_pair(db_conn: asyncpg.Connection) -> tuple[SkillRepo, uuid.UUID, uuid.UUID]:
+async def repo_pair(
+    db_conn: asyncpg.Connection, test_author_id: uuid.UUID
+) -> tuple[SkillRepo, uuid.UUID, uuid.UUID]:
     """Return (skill_repo, category_id, author_id) for a test transaction."""
     cat_repo = CategoryRepo(db_conn)
     cat = await cat_repo.create(CategoryCreate(slug=f"cat-{uuid.uuid4().hex[:8]}", name="Test Cat"))
-
-    # Create a user for author_id
-    author_id = await db_conn.fetchval(
-        """
-        INSERT INTO users (handle, email, api_key, role)
-        VALUES ($1, $2, $3, 'contributor')
-        RETURNING id
-        """,
-        f"user-{uuid.uuid4().hex[:8]}",
-        f"user-{uuid.uuid4().hex[:8]}@example.com",
-        f"key-{uuid.uuid4().hex}",
-    )
-
-    return SkillRepo(db_conn), cat.id, author_id
+    return SkillRepo(db_conn), cat.id, test_author_id
 
 
 async def test_create_and_get_by_id(repo_pair: tuple[SkillRepo, uuid.UUID, uuid.UUID]) -> None:

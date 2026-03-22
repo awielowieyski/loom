@@ -5,6 +5,9 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+_TRUST_RANK: dict[str, int] = {"experimental": 0, "community": 1, "verified": 2}
+_COST_RANK: dict[str, int] = {"free": 0, "low": 1, "moderate": 2, "high": 3}
+
 
 class TrustTier(StrEnum):
     EXPERIMENTAL = "experimental"
@@ -13,8 +16,7 @@ class TrustTier(StrEnum):
 
     @property
     def rank(self) -> int:
-        rank_map = {TrustTier.EXPERIMENTAL: 0, TrustTier.COMMUNITY: 1, TrustTier.VERIFIED: 2}
-        return rank_map[self]
+        return _TRUST_RANK[self]
 
     def meets_floor(self, floor: "TrustTier") -> bool:
         return self.rank >= floor.rank
@@ -28,13 +30,7 @@ class CostProfile(StrEnum):
 
     @property
     def rank(self) -> int:
-        rank_map = {
-            CostProfile.FREE: 0,
-            CostProfile.LOW: 1,
-            CostProfile.MODERATE: 2,
-            CostProfile.HIGH: 3,
-        }
-        return rank_map[self]
+        return _COST_RANK[self]
 
     def within_budget(self, budget: "CostProfile") -> bool:
         return self.rank <= budget.rank

@@ -56,6 +56,9 @@ class Skill(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
+    def to_summary(self) -> "SkillSummary":
+        return SkillSummary.model_validate(self.model_dump())
+
 
 class SkillSummary(BaseModel):
     id: uuid_mod.UUID
