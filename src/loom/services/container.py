@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from cachetools import TTLCache
+
 from loom.db.repositories.category_repo import CategoryRepo
 from loom.db.repositories.skill_repo import SkillRepo
 from loom.services.discovery import DiscoveryService
@@ -42,6 +44,7 @@ async def create_container(settings: object) -> ServiceContainer:
     pool = await create_pool(settings.database.url)
     embedder = create_embedder(settings.embedding)
     eval_service = EvalService()
+    embed_cache: TTLCache[str, list[float]] = TTLCache(maxsize=128, ttl=300)
 
     def _skill_repo(conn: asyncpg.Connection) -> SkillRepo:
         return SkillRepo(conn)
@@ -57,7 +60,7 @@ async def create_container(settings: object) -> ServiceContainer:
         )
 
     def _discovery(skill_repo: SkillRepo) -> DiscoveryService:
-        return DiscoveryService(skill_repo=skill_repo, embedder=embedder)
+        return DiscoveryService(skill_repo=skill_repo, embedder=embedder, embed_cache=embed_cache)
 
     return ServiceContainer(
         pool=pool,

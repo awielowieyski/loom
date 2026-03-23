@@ -15,9 +15,10 @@ def _make_skill_summary(
     slug: str,
     trust_tier: TrustTier = TrustTier.COMMUNITY,
     cost_profile: CostProfile = CostProfile.FREE,
+    skill_id: uuid.UUID | None = None,
 ) -> SkillSummary:
     return SkillSummary(
-        id=uuid.uuid4(),
+        id=skill_id or uuid.uuid4(),
         slug=slug,
         name=slug,
         description=f"Description for {slug}",
@@ -34,10 +35,10 @@ def _make_skill(
     slug: str,
     trust_tier: TrustTier = TrustTier.COMMUNITY,
     cost_profile: CostProfile = CostProfile.FREE,
+    skill_id: uuid.UUID | None = None,
 ) -> Skill:
-    skill_id = uuid.uuid4()
     return Skill(
-        id=skill_id,
+        id=skill_id or uuid.uuid4(),
         slug=slug,
         name=slug,
         description=f"Description for {slug}",
@@ -68,13 +69,17 @@ def mock_embedder() -> AsyncMock:
 @pytest.fixture
 def mock_repo() -> AsyncMock:
     repo = MagicMock()
-    repo.vector_search = AsyncMock(return_value=[])
+    repo.vector_search_summary = AsyncMock(return_value=[])
+    repo.get_by_id = AsyncMock(return_value=None)
     return repo
 
 
 async def test_resolve_returns_best_match(mock_repo: MagicMock, mock_embedder: MagicMock) -> None:
-    skill = _make_skill("best-match")
-    mock_repo.vector_search = AsyncMock(return_value=[skill])
+    skill_id = uuid.uuid4()
+    summary = _make_skill_summary("best-match", skill_id=skill_id)
+    full_skill = _make_skill("best-match", skill_id=skill_id)
+    mock_repo.vector_search_summary = AsyncMock(return_value=[summary])
+    mock_repo.get_by_id = AsyncMock(return_value=full_skill)
 
     service = DiscoveryService(skill_repo=mock_repo, embedder=mock_embedder)
     result = await service.resolve("do something")
@@ -86,7 +91,7 @@ async def test_resolve_returns_best_match(mock_repo: MagicMock, mock_embedder: M
 async def test_resolve_no_candidates_returns_error(
     mock_repo: MagicMock, mock_embedder: MagicMock
 ) -> None:
-    mock_repo.vector_search = AsyncMock(return_value=[])
+    mock_repo.vector_search_summary = AsyncMock(return_value=[])
 
     service = DiscoveryService(skill_repo=mock_repo, embedder=mock_embedder)
     result = await service.resolve("do something")
@@ -98,9 +103,16 @@ async def test_resolve_no_candidates_returns_error(
 async def test_resolve_filters_by_trust_floor(
     mock_repo: MagicMock, mock_embedder: MagicMock
 ) -> None:
-    experimental = _make_skill("experimental-skill", trust_tier=TrustTier.EXPERIMENTAL)
-    community = _make_skill("community-skill", trust_tier=TrustTier.COMMUNITY)
-    mock_repo.vector_search = AsyncMock(return_value=[experimental, community])
+    community_id = uuid.uuid4()
+    experimental = _make_skill_summary("experimental-skill", trust_tier=TrustTier.EXPERIMENTAL)
+    community = _make_skill_summary(
+        "community-skill", trust_tier=TrustTier.COMMUNITY, skill_id=community_id
+    )
+    full_community = _make_skill(
+        "community-skill", trust_tier=TrustTier.COMMUNITY, skill_id=community_id
+    )
+    mock_repo.vector_search_summary = AsyncMock(return_value=[experimental, community])
+    mock_repo.get_by_id = AsyncMock(return_value=full_community)
 
     context = ResolutionContext(trust_floor=TrustTier.COMMUNITY)
     service = DiscoveryService(skill_repo=mock_repo, embedder=mock_embedder)
@@ -114,9 +126,12 @@ async def test_resolve_filters_by_trust_floor(
 
 
 async def test_resolve_penalises_high_cost(mock_repo: MagicMock, mock_embedder: MagicMock) -> None:
-    expensive = _make_skill("expensive-skill", cost_profile=CostProfile.HIGH)
-    cheap = _make_skill("cheap-skill", cost_profile=CostProfile.FREE)
-    mock_repo.vector_search = AsyncMock(return_value=[expensive, cheap])
+    cheap_id = uuid.uuid4()
+    expensive = _make_skill_summary("expensive-skill", cost_profile=CostProfile.HIGH)
+    cheap = _make_skill_summary("cheap-skill", cost_profile=CostProfile.FREE, skill_id=cheap_id)
+    full_cheap = _make_skill("cheap-skill", cost_profile=CostProfile.FREE, skill_id=cheap_id)
+    mock_repo.vector_search_summary = AsyncMock(return_value=[expensive, cheap])
+    mock_repo.get_by_id = AsyncMock(return_value=full_cheap)
 
     context = ResolutionContext(cost_budget=CostProfile.LOW)
     service = DiscoveryService(skill_repo=mock_repo, embedder=mock_embedder)
@@ -125,3 +140,17 @@ async def test_resolve_penalises_high_cost(mock_repo: MagicMock, mock_embedder: 
     # cheap should be ranked higher than expensive
     assert isinstance(result, ResolvedSkill)
     assert result.skill.slug == "cheap-skill"
+
+
+async def test_embedding_cache_avoids_redundant_calls(
+    mock_repo: MagicMock, mock_embedder: MagicMock
+) -> None:
+    """Identical queries should only call the embedder once."""
+    mock_repo.vector_search_summary = AsyncMock(return_value=[])
+
+    service = DiscoveryService(skill_repo=mock_repo, embedder=mock_embedder)
+    await service.resolve("same query")
+    await service.resolve("same query")
+
+    # embedder should only have been called once due to cache
+    assert mock_embedder.embed_query.call_count == 1

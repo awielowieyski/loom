@@ -17,6 +17,7 @@ dependencies = [
     "pyyaml>=6.0",
     "pynacl>=1.5",
     "greenlet>=3.3.2",
+    "cachetools>=5.5",
 ]
 
 [project.optional-dependencies]
@@ -28,6 +29,7 @@ dev = [
     "mypy>=1.13",
     "pre-commit>=4.0",
     "types-PyYAML>=6.0",
+    "types-cachetools>=5.5",
 ]
 
 [build-system]

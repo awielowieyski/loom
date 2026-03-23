@@ -3,6 +3,8 @@
 import uuid
 from typing import TYPE_CHECKING, Any
 
+from cachetools import TTLCache
+
 from loom.models.common import CostProfile, TrustTier
 from loom.models.resolution import (
     Alternative,
@@ -11,13 +13,13 @@ from loom.models.resolution import (
     ResolutionError,
     ResolvedSkill,
 )
-from loom.models.skill import Skill, SkillSummary
+from loom.models.skill import SkillSummary
 
 if TYPE_CHECKING:
     from loom.db.repositories.skill_repo import SkillRepo
 
 
-def _score(skill: Skill, context: ResolutionContext | None) -> float:
+def _score(skill: SkillSummary, context: ResolutionContext | None) -> float:
     """Compute a ranking score (higher is better)."""
     score = 1.0
 
@@ -36,9 +38,27 @@ def _score(skill: Skill, context: ResolutionContext | None) -> float:
 class DiscoveryService:
     """Resolves skills from natural-language task descriptions."""
 
-    def __init__(self, skill_repo: "SkillRepo", embedder: Any) -> None:
+    def __init__(
+        self,
+        skill_repo: "SkillRepo",
+        embedder: Any,
+        embed_cache: TTLCache[str, list[float]] | None = None,
+    ) -> None:
         self._skill_repo = skill_repo
         self._embedder = embedder
+        self._embed_cache: TTLCache[str, list[float]] = embed_cache or TTLCache(
+            maxsize=128, ttl=300
+        )
+
+    async def _get_embedding(self, text: str) -> list[float]:
+        """Return embedding for text, using cache to avoid redundant API calls."""
+        cached: list[float] | None = self._embed_cache.get(text)
+        if cached is not None:
+            return cached
+        embed_result = await self._embedder.embed_query(text)
+        embedding: list[float] = embed_result.embeddings[0]
+        self._embed_cache[text] = embedding
+        return embedding
 
     async def resolve(
         self,
@@ -46,12 +66,11 @@ class DiscoveryService:
         context: ResolutionContext | None = None,
     ) -> ResolvedSkill | ResolutionError:
         """Embed the task, vector-search, apply constraint ranking, return best match."""
-        # 1. Embed query
-        embed_result = await self._embedder.embed_query(task_description)
-        query_embedding: list[float] = embed_result.embeddings[0]
+        # 1. Embed query (cached)
+        query_embedding = await self._get_embedding(task_description)
 
-        # 2. Vector search
-        candidates = await self._skill_repo.vector_search(query_embedding, limit=20)
+        # 2. Lightweight vector search — summaries only
+        candidates = await self._skill_repo.vector_search_summary(query_embedding, limit=20)
 
         if not candidates:
             return ResolutionError(
@@ -60,7 +79,7 @@ class DiscoveryService:
             )
 
         # 3. Apply hard filter: trust floor
-        accepted: list[Skill] = []
+        accepted: list[SkillSummary] = []
         rejected: list[RejectedCandidate] = []
 
         trust_floor = context.trust_floor if context else None
@@ -68,7 +87,7 @@ class DiscoveryService:
             if trust_floor is not None and not skill.trust_tier.meets_floor(trust_floor):
                 rejected.append(
                     RejectedCandidate(
-                        skill=skill.to_summary(),
+                        skill=skill,
                         reason=f"Trust tier {skill.trust_tier.value!r} below floor "
                         f"{trust_floor.value!r}",
                     )
@@ -80,28 +99,36 @@ class DiscoveryService:
             return ResolutionError(
                 error="no_match",
                 message="No skills passed trust floor constraint",
-                available_at_lower_tier=[s.to_summary() for s in candidates],
+                available_at_lower_tier=candidates,
             )
 
-        # 4. Soft ranking by score — compute once, reuse for alternatives
+        # 4. Soft ranking by score
         scored = sorted(
             [(s, _score(s, context)) for s in accepted],
             key=lambda pair: pair[1],
             reverse=True,
         )
-        best, _best_score = scored[0]
+        best_summary, _best_score = scored[0]
         rest = scored[1:4]  # top 3 alternatives
 
         alternatives = [
             Alternative(
-                skill=s.to_summary(),
+                skill=s,
                 match_score=score,
                 tradeoff="Alternative skill",
             )
             for s, score in rest
         ]
 
-        # 5. Build rationale
+        # 5. Fetch full skill only for the winner
+        best = await self._skill_repo.get_by_id(best_summary.id)
+        if best is None:
+            return ResolutionError(
+                error="no_match",
+                message=f"Skill {best_summary.slug!r} disappeared during resolution",
+            )
+
+        # 6. Build rationale
         rationale = [f"Selected {best.slug!r} as best match"]
         if context and context.cost_budget is not None:
             rationale.append(f"Cost budget: {context.cost_budget.value}")
@@ -123,10 +150,9 @@ class DiscoveryService:
         cost_budget: CostProfile | None = None,
     ) -> list[SkillSummary]:
         """Return skill summaries matching query, with optional filters."""
-        embed_result = await self._embedder.embed_query(query)
-        query_embedding: list[float] = embed_result.embeddings[0]
+        query_embedding = await self._get_embedding(query)
 
-        candidates = await self._skill_repo.vector_search(
+        candidates = await self._skill_repo.vector_search_summary(
             query_embedding,
             limit=20,
             category_id=category_id,
@@ -137,6 +163,6 @@ class DiscoveryService:
         for skill in candidates:
             if cost_budget is not None and not skill.cost_profile.within_budget(cost_budget):
                 continue
-            results.append(skill.to_summary())
+            results.append(skill)
 
         return results

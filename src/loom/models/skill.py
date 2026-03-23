@@ -3,7 +3,7 @@
 import uuid as uuid_mod
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from loom.models.common import (
     CostProfile,
@@ -52,12 +52,23 @@ class Skill(BaseModel):
     eval_spec: EvalSpec = EvalSpec()
     signature: str | None = None
     extends: str | None = None
-    embedding: list[float] | None = None
+    embedding: list[float] | None = Field(default=None, exclude=True)
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
     def to_summary(self) -> "SkillSummary":
-        return SkillSummary.model_validate(self.model_dump())
+        return SkillSummary(
+            id=self.id,
+            slug=self.slug,
+            name=self.name,
+            description=self.description,
+            category_id=self.category_id,
+            tags=self.tags,
+            version=self.version,
+            trust_tier=self.trust_tier,
+            cost_profile=self.cost_profile,
+            estimated_duration=self.estimated_duration,
+        )
 
 
 class SkillSummary(BaseModel):
