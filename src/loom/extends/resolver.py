@@ -296,8 +296,7 @@ def validate_step_sources(steps: list[dict[str, Any]]) -> list[str]:
         if scheme == "corp":
             slug = ref.split("://", 1)[1]
             warnings.append(
-                f"Step {idx} references corp://{slug} which is not "
-                f"resolvable in a public context"
+                f"Step {idx} references corp://{slug} which is not resolvable in a public context"
             )
 
     return warnings
