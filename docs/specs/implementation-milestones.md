@@ -83,47 +83,139 @@
 
 **What you can demo:** Submit a vague, low-quality skill — it gets rejected with specific feedback. Submit a good one — it enters as `experimental`. Propose an amendment that adds complexity without improving quality — it gets flagged. Propose a genuine improvement — it auto-merges with a version bump. Show the eval scores and trust tier for any skill.
 
-### Eval Engine
+**Full design:** [M2 Evaluation Security Spec](2026-03-23-m2-quality-trust-spec.md) — threat model, 5-phase eval pipeline, schemas, service architecture.
 
-- [ ] Structural validation gate (hard pass/fail): required fields, dependency schema, eval_spec present
-- [ ] LLM-powered quality scoring: clarity, completeness, minimalism (configurable dimensions)
-- [ ] 3-run median scoring with tolerance bands (spread > 0.15 → low-confidence flag)
-- [ ] Overlap detection: embedding similarity > 0.90 → duplicate flag with justification requirement
-- [ ] Scope classification: LLM classifier detects personal content (paths, credentials, usernames) in community submissions
-- [ ] Dependency risk scoring: network access, external APIs, broad MCP scopes → higher scrutiny
-- [ ] Eval results stored with evaluator version, trigger type, dimension breakdown
+M2 is divided into four sub-milestones that sequence from deterministic checks through LLM evaluation to trust decisions and sandboxed execution:
 
-### Trust Tiers
+```
+M2i (Pipeline + Static) ──→ M2ii (LLM Eval + Aggregation)
+                                      │
+                                      ▼
+                             M2iii (Trust + Amendments)
+                                      │
+                                      ▼
+                             M2iv (Sandbox + Signing)
+```
 
-- [ ] `experimental`: automatic on passing structural + eval threshold
-- [ ] `community`: automatic when thresholds met (>N successful usage reports, no security flags, signed)
-- [ ] `verified`: manual promotion by maintainers (API endpoint + web UI in M4)
-- [ ] Trust tier filters applied to `resolve` and `search` results
-- [ ] Trust tier visible in all responses
+### M2i: Static Analysis + Pipeline Skeleton
 
-### Signing & Provenance
+**Proves:** The eval infrastructure exists and catches obviously bad submissions deterministically.
 
-- [ ] ed25519 keypair registration on user accounts
-- [ ] Signature generation over `content + version + dependencies + eval_spec`
-- [ ] Signature verification on all mutations
-- [ ] Signature status included in resolve/get_skill responses
-- [ ] Unsigned skills capped at `experimental` tier
+#### Infrastructure
+- [ ] Redis + arq setup in Docker Compose
+- [ ] `eval_jobs` table: tracks pipeline runs (status, scores, content_hash, evaluator_version)
+- [ ] `eval_dimension_runs` table: individual LLM eval runs per dimension
+- [ ] `trust_audit_log` table: tier change history
+- [ ] Alembic migrations for all new tables
+- [ ] `EvalRepo` repository following existing repo patterns (asyncpg, explicit SQL)
+- [ ] Arq worker process for background eval job execution
 
-### Amendments
+#### Static Analyser (Phase 1)
+- [ ] Schema validation: required frontmatter fields, field types, enum values
+- [ ] Complexity bounds: content length, step count, dependency count, nesting depth
+- [ ] Injection pattern scanning: regex catalogue for common prompt injection patterns
+- [ ] Dependency resolution checks: extends target existence, circular dependency detection
+- [ ] Cost/trust metadata sanity checks
+- [ ] `StructuralReport` model: passed, errors, warnings, injection_indicators, content_hash
 
-- [ ] Amendment submission: diff against existing skill (new content, same slug)
-- [ ] Scope check: LLM classifier determines if amendment changes WHAT vs HOW
-- [ ] Comparative eval: run eval_spec against both versions, score delta
-- [ ] Auto-merge: amended version scores >= original - 0.05 on all dimensions → patch version bump
-- [ ] Mixed results → queued for review (stored as pending amendment)
+#### Pipeline Skeleton
+- [ ] `EvalPipelineService` orchestrator (calls phases in sequence, saves results)
+- [ ] Integration with `RegistryService.create_skill()` — auto-enqueue eval on submission
+- [ ] API: `POST /skills/{id}/eval` (trigger re-eval), `GET /skills/{id}/eval` (get results)
+- [ ] `eval_status` field on skills table (pending, running, completed, failed)
+
+### M2ii: Isolated LLM Evaluation + Score Aggregation
+
+**Proves:** Skills are quality-scored by LLM in an injection-resistant architecture.
+
+#### Content Isolation (Phase 2)
+- [ ] Fragment extraction: split skill into metadata, step_outline, full_body, code_blocks, eval_scenarios
+- [ ] JSON encoding of all fragments (raw markdown never in LLM prompts)
+- [ ] Unicode normalisation and injection vector stripping (zero-width chars, RTL overrides)
+- [ ] Content hashing (SHA-256) bound to all eval results
+
+#### LLM Evaluation (Phase 3)
+- [ ] Data-only evaluation protocol: skill content as quarantined data field, never in system prompt
+- [ ] Dimension isolation: one LLM call per dimension (clarity, completeness, safety, correctness)
+- [ ] Each dimension sees only its relevant fragment (see [M2 Evaluation Security Spec](2026-03-23-m2-quality-trust-spec.md) §3.3.1 table)
+- [ ] Structured output via tool_use: score, evidence, injection_detected, confidence
+- [ ] Blind evaluation: no author, trust tier, or popularity metadata exposed to evaluator
+- [ ] `PromptRegistry` with versioned prompt templates per dimension
+- [ ] Multi-run consensus: N=3 independent runs per dimension, median score
+- [ ] Injection detection: `injection_detected` field on every eval run
+- [ ] Output validation: schema enforcement, malformed response retry (up to 2)
+
+#### Score Aggregation (Phase 5)
+
+> **Note:** Phase 5 is implemented here before Phase 4 (Sandbox, in M2iv). Until M2iv, `sandbox` result is always `None` and the composite score reflects LLM dimensions only. This is intentional — LLM eval provides immediate value; sandbox execution adds depth later.
+
+- [ ] Weighted composite score (clarity 0.25, completeness 0.30, safety 0.25, correctness 0.20)
+- [ ] Confidence computation from score spread (high/medium/low thresholds)
+- [ ] Injection response protocol: quarantine on 2+ dimension flags, review on 1
+- [ ] Composite score written back to `skills` table
+- [ ] Canary skill infrastructure: reference skills with known scores, drift detection
+- [ ] `evaluator_version` tracking on all results
+
+### M2iii: Trust Tiers, Promotion, Amendments
+
+**Proves:** Quality gates prevent bad submissions from gaining trust; good submissions are rewarded.
+
+> **Dependency note:** Auto-promotion to `community` requires signing (M2iv). Until M2iv, promotion logic is implemented and tested but the signing criterion is deferred — skills can meet all other criteria and be queued for promotion pending signature.
+
+#### Trust Tier Management
+- [ ] `TrustService` with auto-promotion logic (`experimental` → `community` when thresholds met)
+- [ ] Promotion criteria: composite score ≥ 0.70, no injection flags, safety ≥ 0.60, ≥10 usage reports with ≥80% success, signed, author account in good standing (no quarantined submissions in last 90 days)
+- [ ] Demotion triggers: score regression, usage failure rate >30%, security flags, key revocation
+- [ ] `trust_audit_log` population on all tier changes
+- [ ] API: `GET /skills/{id}/trust` (tier + audit history)
+
+#### Amendment Workflow
+- [ ] Amendment submission: new content against existing slug
+- [ ] Scope check: LLM classifier determines WHAT vs HOW change (data-only protocol)
+- [ ] Comparative eval: both versions through full pipeline, per-dimension comparison
+- [ ] Auto-merge: amendment ≥ original − 0.05 on all dimensions → patch version bump
+- [ ] Mixed results → human review queue
 - [ ] Regression → rejected with per-dimension explanation
 - [ ] Anti-complexity gate: >20% token growth without proportional eval improvement → flagged
+- [ ] Score jump detection: >0.3 composite jump → flagged regardless of absolute score
+
+#### Human Review Queue
+- [ ] Queue model: skills awaiting review with full eval context
+- [ ] Queue population from low-confidence evals, injection flags, mixed amendments
+- [ ] Queue item includes: eval fragments (what LLM saw), scores, indicators (no UI — UI is M4)
+
+### M2iv: Sandboxed Execution + Signing
+
+**Proves:** Eval scenarios are actually tested; skills have verifiable provenance.
+
+#### Sandbox Execution (Phase 4)
+- [ ] `loom-eval-sandbox` Docker image: minimal Python/Node runtime
+- [ ] Container spec: no network, 512MB memory, 1 CPU, 30s timeout, read-only filesystem, non-root
+- [ ] Eval scenario validation and execution in container
+- [ ] Code block syntax checking and linting in container
+- [ ] Output capture and pass/fail determination
+- [ ] Warm container pool (3 pre-built containers for reduced cold start)
+
+#### Signing & Provenance
+- [ ] `signing_keys` table: user_id, public_key (ed25519), fingerprint, revocation status
+- [ ] `SigningService`: key registration, signature generation, verification
+- [ ] Signature covers: SHA-256(content + version + dependencies + eval_spec)
+- [ ] Signature status in `resolve` and `get_skill` responses
+- [ ] Unsigned skills capped at `experimental` tier
+- [ ] Key revocation invalidates all signatures, triggers trust re-evaluation
+- [ ] API: key registration, skill signing, signature verification
+
+#### Overlap Detection
+- [ ] Embedding similarity check on submission (threshold 0.90)
+- [ ] Duplicate flag with justification requirement for near-matches
 
 ### Deliverable
 
 - Quality-gated submission pipeline (submit → eval → tier assignment)
-- Amendment workflow with automated comparison
-- Signing and verification
+- Injection-resistant 5-phase eval with defence in depth
+- Amendment workflow with automated comparison and anti-gaming
+- Trust tier auto-promotion and demotion
+- Signing and verification with ed25519
 - Eval results queryable for any skill (transparency)
 
 ---
