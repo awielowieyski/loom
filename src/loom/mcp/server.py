@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
 
+from loom.models.capability import CapabilitySummary
 from loom.models.common import CostProfile, TrustTier
 from loom.models.resolution import ResolutionContext
 from loom.services.container import ServiceContainer, close_container, create_container
@@ -135,7 +136,7 @@ async def get_capability(slug: str, version: str | None = None) -> dict[str, Any
         capability_repo = container.capability_repo_factory(conn)
         category_repo = container.category_repo_factory(conn)
         cap_registry = container.capability_registry_factory(capability_repo, category_repo)
-        capability = await cap_registry.get_capability(slug)
+        capability = await cap_registry.get_capability(slug, version=version)
 
     if capability is None:
         return {"error": "not_found", "message": f"Capability {slug!r} not found"}
@@ -174,7 +175,10 @@ async def search(
         unified_results = await unified.search(
             query=query, trust_tier=tier, cost_budget=budget, type_filter=type
         )
-    return [s.model_dump() for s in unified_results]
+    return [
+        {**s.model_dump(), "type": "capability" if isinstance(s, CapabilitySummary) else "skill"}
+        for s in unified_results
+    ]
 
 
 @mcp.tool()

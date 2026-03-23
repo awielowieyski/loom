@@ -116,7 +116,7 @@ async def get_capability(
     version: Annotated[str | None, Query()] = None,
 ) -> Capability:
     """Retrieve a capability by slug and optional version."""
-    capability = await registry.get_capability(slug)
+    capability = await registry.get_capability(slug, version=version)
     if capability is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

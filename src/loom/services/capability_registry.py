@@ -1,5 +1,6 @@
 """CapabilityRegistryService: create, retrieve, update and list capabilities."""
 
+import logging
 import uuid as uuid_mod
 from typing import TYPE_CHECKING, Any
 
@@ -37,6 +38,9 @@ def _coerce_cost_profile(value: CostProfile | str | None, fallback: CostProfile)
     return value if isinstance(value, CostProfile) else CostProfile(value)
 
 
+logger = logging.getLogger(__name__)
+
+
 class CapabilityRegistryService:
     """Orchestrates capability registration with structural validation."""
 
@@ -58,7 +62,9 @@ class CapabilityRegistryService:
     ) -> Capability:
         """Validate, resolve category, then create capability + initial version."""
         # Validate steps
-        self._validate_steps(data.steps)
+        warnings = self._validate_steps(data.steps)
+        for w in warnings:
+            logger.warning("Step validation: %s", w)
 
         # Validate data flow
         errors = self._validate_data_flow(data.steps, data.data_flow)
@@ -93,9 +99,40 @@ class CapabilityRegistryService:
             embedding=embedding,
         )
 
-    async def get_capability(self, slug: str) -> Capability | None:
-        """Return a capability by slug."""
-        return await self._capability_repo.get_by_slug(slug)
+    async def get_capability(self, slug: str, version: str | None = None) -> Capability | None:
+        """Return a capability by slug, optionally at a specific version."""
+        capability = await self._capability_repo.get_by_slug(slug)
+        if capability is None or version is None:
+            return capability
+
+        ver = await self._capability_repo.get_version(capability.id, version)
+        if ver is None:
+            return None
+
+        # Overlay version-specific fields onto the capability.
+        # For each optional version field, fall back to the capability's value.
+        def _pick(ver_val: object, cap_val: object) -> object:
+            return ver_val if ver_val is not None else cap_val
+
+        return capability.model_copy(
+            update={
+                "version": ver.version,
+                "steps": ver.steps,
+                "preconditions": _pick(ver.preconditions, capability.preconditions),
+                "expected_outcome": _pick(ver.expected_outcome, capability.expected_outcome),
+                "data_flow": _pick(ver.data_flow, capability.data_flow),
+                "dependencies": _pick(ver.dependencies, capability.dependencies),
+                "cost_profile": (
+                    CostProfile(ver.cost_profile)
+                    if ver.cost_profile is not None
+                    else capability.cost_profile
+                ),
+                "cost_drivers": _pick(ver.cost_drivers, capability.cost_drivers),
+                "estimated_duration": _pick(ver.estimated_duration, capability.estimated_duration),
+                "eval_spec": _pick(ver.eval_spec, capability.eval_spec),
+                "extends": _pick(ver.extends, capability.extends),
+            },
+        )
 
     async def update_capability(
         self,
@@ -130,7 +167,9 @@ class CapabilityRegistryService:
 
         # Validate steps if changed
         if data.steps is not None:
-            self._validate_steps(steps)
+            warnings = self._validate_steps(steps)
+            for w in warnings:
+                logger.warning("Step validation: %s", w)
 
         # Validate data flow if steps or data_flow changed
         if data.steps is not None or data.data_flow is not None:
