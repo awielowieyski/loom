@@ -3,10 +3,14 @@
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     ARRAY,
+    Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Index,
+    Integer,
+    LargeBinary,
     MetaData,
     String,
     Table,
@@ -64,6 +68,16 @@ skills = Table(
     Column("eval_spec", JSONB, nullable=False, server_default="{}"),
     Column("extends", Text, nullable=True),
     Column("embedding", Vector(1536), nullable=True),
+    # M2: evaluation and signing columns
+    Column(
+        "latest_eval_job_id",
+        UUID,
+        ForeignKey("eval_jobs.id", use_alter=True, name="fk_skills_latest_eval_job"),
+        nullable=True,
+    ),
+    Column("composite_score", Float, nullable=True),
+    Column("eval_status", String(20), nullable=True, server_default="pending"),
+    Column("signature_key_fingerprint", Text, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
     Index("idx_skills_category", "category_id"),
@@ -91,4 +105,84 @@ skill_versions = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
     UniqueConstraint("skill_id", "version", name="uq_skill_versions_skill_version"),
     Index("idx_skill_versions_skill", "skill_id"),
+)
+
+# --- M2: Evaluation pipeline tables ---
+
+eval_jobs = Table(
+    "eval_jobs",
+    metadata,
+    Column("id", UUID, primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("skill_id", UUID, ForeignKey("skills.id"), nullable=False),
+    Column("skill_version", Text, nullable=False),
+    Column("content_hash", Text, nullable=False),
+    Column("trigger_type", Text, nullable=False),
+    Column("status", Text, nullable=False, server_default="pending"),
+    Column("structural_report", JSONB, nullable=True),
+    Column("composite_score", Float, nullable=True),
+    Column("dimension_scores", JSONB, nullable=True),
+    Column("dimension_confidence", JSONB, nullable=True),
+    Column("injection_flagged", Boolean, nullable=False, server_default="false"),
+    Column("sandbox_passed", Boolean, nullable=True),
+    Column("overall_confidence", Float, nullable=True),
+    Column("evaluator_version", Text, nullable=False),
+    Column("started_at", DateTime(timezone=True), nullable=True),
+    Column("completed_at", DateTime(timezone=True), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    Index("idx_eval_jobs_skill", "skill_id"),
+    Index("idx_eval_jobs_status", "status"),
+    Index("idx_eval_jobs_trigger", "trigger_type"),
+)
+
+eval_dimension_runs = Table(
+    "eval_dimension_runs",
+    metadata,
+    Column("id", UUID, primary_key=True, server_default=text("gen_random_uuid()")),
+    Column(
+        "eval_job_id",
+        UUID,
+        ForeignKey("eval_jobs.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("dimension", Text, nullable=False),
+    Column("run_index", Integer, nullable=False),
+    Column("score", Float, nullable=False),
+    Column("evidence", JSONB, nullable=False),
+    Column("injection_detected", Boolean, nullable=False, server_default="false"),
+    Column("injection_detail", Text, nullable=True),
+    Column("confidence", Float, nullable=False),
+    Column("prompt_variant", Text, nullable=False),
+    Column("model_id", Text, nullable=False),
+    Column("latency_ms", Integer, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    UniqueConstraint("eval_job_id", "dimension", "run_index", name="uq_eval_runs_job_dim_idx"),
+    Index("idx_eval_runs_job", "eval_job_id"),
+)
+
+trust_audit_log = Table(
+    "trust_audit_log",
+    metadata,
+    Column("id", UUID, primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("skill_id", UUID, ForeignKey("skills.id"), nullable=False),
+    Column("previous_tier", Text, nullable=False),
+    Column("new_tier", Text, nullable=False),
+    Column("reason", Text, nullable=False),
+    Column("eval_job_id", UUID, ForeignKey("eval_jobs.id"), nullable=True),
+    Column("promoted_by", UUID, ForeignKey("users.id"), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    Index("idx_trust_audit_skill", "skill_id"),
+)
+
+signing_keys = Table(
+    "signing_keys",
+    metadata,
+    Column("id", UUID, primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("user_id", UUID, ForeignKey("users.id"), nullable=False),
+    Column("public_key", LargeBinary, nullable=False),
+    Column("fingerprint", Text, nullable=False, unique=True),
+    Column("label", Text, nullable=True),
+    Column("revoked_at", DateTime(timezone=True), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    Index("idx_signing_keys_user", "user_id"),
+    Index("idx_signing_keys_fingerprint", "fingerprint"),
 )
