@@ -8,9 +8,11 @@ from typing import TYPE_CHECKING
 from cachetools import TTLCache
 
 from loom.db.repositories.category_repo import CategoryRepo
+from loom.db.repositories.eval_repo import EvalRepo
 from loom.db.repositories.skill_repo import SkillRepo
 from loom.services.discovery import DiscoveryService
 from loom.services.eval import EvalService
+from loom.services.prompt_registry import PromptRegistry
 from loom.services.registry import RegistryService
 
 if TYPE_CHECKING:
@@ -33,6 +35,10 @@ class ServiceContainer:
     registry_service_factory: Callable[[SkillRepo, CategoryRepo], RegistryService]
     discovery_service_factory: Callable[[SkillRepo], DiscoveryService]
 
+    # M2: eval pipeline components
+    prompt_registry: PromptRegistry
+    eval_repo_factory: Callable[[asyncpg.Connection], EvalRepo]
+
 
 async def create_container(settings: object) -> ServiceContainer:
     """Build a fully-wired container from settings."""
@@ -46,11 +52,16 @@ async def create_container(settings: object) -> ServiceContainer:
     eval_service = EvalService()
     embed_cache: TTLCache[str, list[float]] = TTLCache(maxsize=128, ttl=300)
 
+    prompt_registry = PromptRegistry()
+
     def _skill_repo(conn: asyncpg.Connection) -> SkillRepo:
         return SkillRepo(conn)
 
     def _category_repo(conn: asyncpg.Connection) -> CategoryRepo:
         return CategoryRepo(conn)
+
+    def _eval_repo(conn: asyncpg.Connection) -> EvalRepo:
+        return EvalRepo(conn)
 
     def _registry(skill_repo: SkillRepo, category_repo: CategoryRepo) -> RegistryService:
         return RegistryService(
@@ -70,6 +81,8 @@ async def create_container(settings: object) -> ServiceContainer:
         category_repo_factory=_category_repo,
         registry_service_factory=_registry,
         discovery_service_factory=_discovery,
+        prompt_registry=prompt_registry,
+        eval_repo_factory=_eval_repo,
     )
 
 

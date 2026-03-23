@@ -7,6 +7,7 @@ import asyncpg
 from fastapi import Depends, Request
 
 from loom.db.repositories.category_repo import CategoryRepo
+from loom.db.repositories.eval_repo import EvalRepo
 from loom.db.repositories.skill_repo import SkillRepo
 from loom.services.container import ServiceContainer
 from loom.services.discovery import DiscoveryService
@@ -38,6 +39,13 @@ def get_category_repo(
     container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> CategoryRepo:
     return container.category_repo_factory(conn)
+
+
+def get_eval_repo(
+    conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
+) -> EvalRepo:
+    return container.eval_repo_factory(conn)
 
 
 def get_registry_service(
