@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
@@ -10,18 +10,6 @@ from loom.models.common import TrustTier
 
 if TYPE_CHECKING:
     import uuid as uuid_mod
-
-
-class _EvalResult(Protocol):
-    composite_score: float | None
-    dimension_scores: dict[str, float] | None
-    injection_flagged: bool
-
-
-class _EvalRepo(Protocol):
-    async def get_latest_eval_for_skill(
-        self, skill_id: uuid_mod.UUID
-    ) -> _EvalResult | None: ...
 
 
 class PromotionDecision(BaseModel):
@@ -35,7 +23,7 @@ class TrustService:
 
     def __init__(
         self,
-        eval_repo: _EvalRepo,
+        eval_repo: Any,
         skill_repo: Any,
         *,
         promotion_threshold: float = 0.70,
@@ -78,49 +66,53 @@ class TrustService:
         if usage_count < self._min_usage_count:
             return PromotionDecision(
                 should_promote=False,
-                reason=f"insufficient usage ({usage_count} < {self._min_usage_count})",
+                reason=(f"insufficient usage count" f" ({usage_count} < {self._min_usage_count})"),
             )
 
         # Check success rate
         if success_rate < self._min_success_rate:
-            floor = self._min_success_rate
             return PromotionDecision(
                 should_promote=False,
-                reason=f"low success rate ({success_rate:.2f} < {floor:.2f})",
+                reason=(
+                    f"low success rate" f" ({success_rate:.2f} < {self._min_success_rate:.2f})"
+                ),
             )
 
-        # Fetch latest evaluation
-        latest = await self._eval_repo.get_latest_eval_for_skill(skill_id)
-        if latest is None:
+        # Fetch latest eval
+        latest_eval = await self._eval_repo.get_latest_eval_for_skill(skill_id)
+        if latest_eval is None:
             return PromotionDecision(
                 should_promote=False,
                 reason="no evaluation found for skill",
             )
 
         # Check injection flags
-        if latest.injection_flagged:
+        if latest_eval.injection_flagged:
             return PromotionDecision(
                 should_promote=False,
                 reason="latest evaluation flagged for injection",
             )
 
         # Check composite score
-        composite = latest.composite_score or 0.0
-        promo_thresh = self._promotion_threshold
-        if composite < promo_thresh:
+        composite = latest_eval.composite_score or 0.0
+        if composite < self._promotion_threshold:
             return PromotionDecision(
                 should_promote=False,
-                reason=f"composite score too low ({composite:.2f} < {promo_thresh:.2f})",
+                reason=(
+                    f"composite score too low"
+                    f" ({composite:.2f} < {self._promotion_threshold:.2f})"
+                ),
             )
 
         # Check safety dimension score
-        dimension_scores = latest.dimension_scores or {}
+        dimension_scores = latest_eval.dimension_scores or {}
         safety_score = dimension_scores.get("safety", 0.0)
         if safety_score < self._safety_floor:
-            floor = self._safety_floor
             return PromotionDecision(
                 should_promote=False,
-                reason=f"safety score below floor ({safety_score:.2f} < {floor:.2f})",
+                reason=(
+                    f"safety score below floor" f" ({safety_score:.2f} < {self._safety_floor:.2f})"
+                ),
             )
 
         return PromotionDecision(
