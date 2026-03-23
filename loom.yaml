@@ -9,7 +9,7 @@ embedding:
 
 llm:
   provider: "openrouter"
-  model: "google/gemini-3-flash"
+  model: "google/gemini-3-flash-preview"
   base_url: "https://openrouter.ai/api/v1"
 
 mcp:

@@ -22,7 +22,7 @@ class EmbeddingConfig(BaseModel):
 
 class LLMConfig(BaseModel):
     provider: Literal["openai", "openrouter"] = "openrouter"
-    model: str = "google/gemini-3-flash"
+    model: str = "google/gemini-3-flash-preview"
     api_key: str = ""
     base_url: str | None = None
 

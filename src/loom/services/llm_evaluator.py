@@ -69,12 +69,25 @@ def _build_user_message(
     return json.dumps(msg)
 
 
+def _strip_code_fences(text: str) -> str:
+    """Strip markdown code fences from LLM response if present."""
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        # Remove opening fence (```json or ```)
+        first_newline = stripped.index("\n")
+        stripped = stripped[first_newline + 1 :]
+    if stripped.endswith("```"):
+        stripped = stripped[:-3]
+    return stripped.strip()
+
+
 def _parse_response(raw: str, dimension: EvalDimension) -> DimensionResult:
     """Parse and validate an LLM response into a DimensionResult.
 
     Raises ``ValueError`` if the response cannot be parsed or validated.
     """
-    data = json.loads(raw)
+    cleaned = _strip_code_fences(raw)
+    data = json.loads(cleaned)
 
     score = float(data["score"])
     if not 0.0 <= score <= 1.0:
