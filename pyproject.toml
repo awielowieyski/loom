@@ -18,6 +18,9 @@ dependencies = [
     "pynacl>=1.5",
     "greenlet>=3.3.2",
     "cachetools>=5.5",
+    "arq>=0.26",
+    "redis[hiredis]>=5.0",
+    "aiodocker>=0.23",
 ]
 
 [project.optional-dependencies]
@@ -67,3 +70,6 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
+markers = [
+    "e2e: end-to-end tests that make real external API calls (skip in CI)",
+]

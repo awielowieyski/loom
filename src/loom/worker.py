@@ -1,0 +1,222 @@
+"""Arq worker for async evaluation jobs.
+
+Started with: ``uv run arq loom.worker.WorkerSettings``
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime
+from typing import Any
+
+from arq import cron  # noqa: F401 — re-exported for arq discovery
+from arq.connections import RedisSettings
+
+from loom.services.score_aggregator import EVALUATOR_VERSION
+
+logger = logging.getLogger(__name__)
+
+
+async def startup(ctx: dict[str, Any]) -> None:
+    """Create DB pool, LLM model, and pipeline services on worker start."""
+    from loom.db.engine import create_pool
+    from loom.db.repositories.eval_repo import EvalRepo
+    from loom.db.repositories.skill_repo import SkillRepo
+    from loom.providers.llm import create_llm_model
+    from loom.services.content_isolator import isolate as isolate_content
+    from loom.services.llm_evaluator import LLMEvaluator
+    from loom.services.prompt_registry import PromptRegistry
+    from loom.services.score_aggregator import ScoreAggregator
+    from loom.services.static_analyser import StaticAnalyser
+    from loom.settings import LoomSettings
+
+    settings = LoomSettings()
+    pool = await create_pool(settings.database.url)
+    llm_model = create_llm_model(settings.llm)
+    prompt_registry = PromptRegistry()
+
+    from pydantic_ai import Agent
+
+    def agent_factory(system_prompt: str) -> Agent[None, str]:
+        return Agent(llm_model, system_prompt=system_prompt, output_type=str)
+
+    pipeline_cfg = settings.pipeline
+    static_analyser = StaticAnalyser(
+        max_content_length=pipeline_cfg.max_content_length,
+        max_steps=pipeline_cfg.max_steps,
+        max_dependencies=pipeline_cfg.max_dependencies,
+    )
+    score_aggregator = ScoreAggregator(pass_threshold=pipeline_cfg.pass_threshold)
+    llm_evaluator = LLMEvaluator(
+        agent_factory=agent_factory,
+        prompt_registry=prompt_registry,
+        model_id=settings.llm.model,
+    )
+
+    ctx["pool"] = pool
+    ctx["settings"] = settings
+    ctx["static_analyser"] = static_analyser
+    ctx["isolate_content"] = isolate_content
+    ctx["llm_evaluator"] = llm_evaluator
+    ctx["score_aggregator"] = score_aggregator
+    ctx["skill_repo_factory"] = lambda conn: SkillRepo(conn)
+    ctx["eval_repo_factory"] = lambda conn: EvalRepo(conn)
+
+    logger.info("Worker started — pool and pipeline services ready")
+
+
+async def shutdown(ctx: dict[str, Any]) -> None:
+    """Close DB pool on worker shutdown."""
+    pool = ctx.get("pool")
+    if pool is not None:
+        await pool.close()
+    logger.info("Worker shutdown — pool closed")
+
+
+async def run_eval_job(ctx: dict[str, Any], skill_id: str, trigger: str) -> dict[str, Any]:
+    """Fetch skill, create eval job record, run pipeline, persist result.
+
+    Updates the skill's eval_status and composite_score on completion.
+    The DB connection is released before the (potentially long-running) pipeline
+    evaluation and re-acquired afterwards to persist results.
+    """
+    import uuid
+
+    from loom.services.eval_pipeline import EvalPipelineService
+
+    pool = ctx["pool"]
+    settings = ctx["settings"]
+    runs_per_dimension: int = settings.pipeline.runs_per_dimension
+
+    # --- Phase A: fetch skill & create job (short DB interaction) ---
+    async with pool.acquire() as conn:
+        skill_repo = ctx["skill_repo_factory"](conn)
+        eval_repo = ctx["eval_repo_factory"](conn)
+
+        skill = await skill_repo.get_by_id(uuid.UUID(skill_id))
+        if skill is None:
+            logger.error("Skill %s not found, aborting eval job", skill_id)
+            return {"error": f"Skill {skill_id} not found"}
+
+        job = await eval_repo.create_eval_job(
+            skill_id=skill.id,
+            skill_version=skill.version,
+            content_hash="",
+            trigger_type=trigger,
+            evaluator_version=EVALUATOR_VERSION,
+        )
+
+        now = datetime.now(UTC)
+        await eval_repo.update_eval_job(job.id, status="running", started_at=now)
+        await skill_repo.update_eval_fields(skill.id, eval_status="running")
+
+    # --- Phase B: run pipeline (no DB connection held) ---
+    try:
+        pipeline = EvalPipelineService(
+            static_analyser=ctx["static_analyser"],
+            content_isolator=ctx["isolate_content"],
+            llm_evaluator=ctx["llm_evaluator"],
+            score_aggregator=ctx["score_aggregator"],
+        )
+
+        result, structural, raw_dimensions = await pipeline.evaluate(
+            skill, runs_per_dimension=runs_per_dimension
+        )
+
+    except Exception:
+        logger.exception("Eval job %s failed for skill %s", job.id, skill_id)
+        # Acquire a fresh connection to persist the failure.
+        async with pool.acquire() as conn:
+            eval_repo = ctx["eval_repo_factory"](conn)
+            skill_repo = ctx["skill_repo_factory"](conn)
+            completed_at = datetime.now(UTC)
+            await eval_repo.update_eval_job(job.id, status="failed", completed_at=completed_at)
+            await skill_repo.update_eval_fields(skill.id, eval_status="failed")
+        raise
+
+    # --- Phase C: persist results (fresh DB connection) ---
+    async with pool.acquire() as conn:
+        eval_repo = ctx["eval_repo_factory"](conn)
+        skill_repo = ctx["skill_repo_factory"](conn)
+
+        for dim, runs in raw_dimensions.items():
+            for idx, run in enumerate(runs):
+                await eval_repo.create_dimension_run(
+                    eval_job_id=job.id,
+                    dimension=dim.value,
+                    run_index=idx,
+                    score=run.score,
+                    evidence=run.evidence,
+                    injection_detected=run.injection_detected,
+                    injection_detail=run.injection_detail,
+                    confidence=run.confidence,
+                )
+
+        completed_at = datetime.now(UTC)
+        await eval_repo.update_eval_job(
+            job.id,
+            status="completed",
+            content_hash=result.content_hash,
+            structural_report=structural.model_dump(),
+            composite_score=result.composite_score,
+            dimension_scores=result.dimension_scores,
+            dimension_confidence=result.dimension_confidence,
+            injection_flagged=result.injection_flagged,
+            sandbox_passed=result.sandbox_passed,
+            overall_confidence=result.overall_confidence,
+            completed_at=completed_at,
+        )
+
+        await skill_repo.update_eval_fields(
+            skill.id,
+            eval_status="completed",
+            composite_score=result.composite_score,
+            latest_eval_job_id=job.id,
+        )
+
+    logger.info(
+        "Eval job %s completed for skill %s — score=%.2f, passed=%s",
+        job.id,
+        skill_id,
+        result.composite_score,
+        result.passed,
+    )
+    return {
+        "job_id": str(job.id),
+        "passed": result.passed,
+        "composite_score": result.composite_score,
+    }
+
+
+def _redis_settings_from_url(url: str) -> RedisSettings:
+    """Parse a redis:// URL into arq RedisSettings."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    return RedisSettings(
+        host=parsed.hostname or "localhost",
+        port=parsed.port or 6379,
+        password=parsed.password,
+        database=int(parsed.path.lstrip("/") or 0),
+    )
+
+
+class WorkerSettings:
+    """Arq worker configuration.
+
+    Started with: ``uv run arq loom.worker.WorkerSettings``
+    """
+
+    functions = [run_eval_job]
+    on_startup = startup
+    on_shutdown = shutdown
+    max_jobs = 5
+    job_timeout = 120
+
+    @staticmethod
+    def redis_settings() -> RedisSettings:
+        """Load Redis URL from application settings."""
+        from loom.settings import LoomSettings
+
+        settings = LoomSettings()
+        return _redis_settings_from_url(settings.redis.url)

@@ -22,7 +22,7 @@ class EmbeddingConfig(BaseModel):
 
 class LLMConfig(BaseModel):
     provider: Literal["openai", "openrouter"] = "openrouter"
-    model: str = "google/gemini-3-flash"
+    model: str = "google/gemini-3-flash-preview"
     api_key: str = ""
     base_url: str | None = None
 
@@ -40,6 +40,26 @@ class MCPConfig(BaseModel):
 class APIConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8000
+
+
+class RedisConfig(BaseModel):
+    url: str = "redis://localhost:6380"
+
+
+class PipelineConfig(BaseModel):
+    """Configuration for the quality assessment pipeline."""
+
+    pass_threshold: float = 0.50
+    promotion_threshold: float = 0.70
+    safety_floor: float = 0.60
+    runs_per_dimension: int = 3
+    low_confidence_spread: float = 0.25
+    sandbox_timeout_seconds: int = 30
+    sandbox_memory_mb: int = 256
+    sandbox_image: str = "loom-eval-sandbox:latest"
+    max_content_length: int = 50_000
+    max_steps: int = 50
+    max_dependencies: int = 15
 
 
 class YamlSettingsSource(PydanticBaseSettingsSource):
@@ -69,6 +89,8 @@ class LoomSettings(BaseSettings):
     llm: LLMConfig = LLMConfig()
     mcp: MCPConfig = MCPConfig()
     api: APIConfig = APIConfig()
+    redis: RedisConfig = RedisConfig()
+    pipeline: PipelineConfig = PipelineConfig()
 
     @classmethod
     def settings_customise_sources(

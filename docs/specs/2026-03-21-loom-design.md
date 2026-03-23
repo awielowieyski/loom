@@ -339,7 +339,7 @@ A corporate Loom instance is a private deployment of the same Loom service, scop
 
 This is the primary monetisation path: **Loom is free for community. Corporate instances are the paid product.** The public registry creates the ecosystem; corporate instances capture the value of org-specific knowledge management.
 
-### 3.3.1 Capability Execution Model
+### 3.3.3 Capability Execution Model
 
 Loom does **not** execute capabilities. It resolves them — returning a fully expanded execution plan that the agent runtime interprets.
 
@@ -411,7 +411,7 @@ Key design decisions:
 | Tier | Criteria | How achieved |
 |------|----------|-------------|
 | `experimental` | Passes structural validation and basic eval | Automatic on submission |
-| `community` | Passes full eval suite, >N successful usage reports, no security flags, signed | Automatic when thresholds met |
+| `community` | Composite score ≥ 0.70, ≥10 usage reports with ≥80% success rate, no security/injection flags, signed ([full criteria](2026-03-23-m2-quality-trust-spec.md)) | Automatic when thresholds met |
 | `verified` | All of `community` + reviewed by category steward or partner org, signed by verified entity | Manual promotion |
 
 **Dependency declarations:**
@@ -496,6 +496,7 @@ For capabilities, these are aggregated from constituent skills but can be overri
 - Amendment comparison (run eval_spec against both versions, score delta)
 - Capability end-to-end evaluation (reference validation, dependency compatibility, data flow analysis)
 - Continuous re-evaluation (scheduled, covered in section 5)
+- **Evaluation security architecture**: 5-phase defence-in-depth pipeline — static analysis → content isolation → isolated LLM eval → sandboxed execution → score aggregation. Skill content is treated as data, never as instructions; each quality dimension is evaluated in an isolated LLM call to contain injection blast radius. Full design in [M2 Evaluation Security Spec](2026-03-23-m2-quality-trust-spec.md).
 
 **Contribution Service:**
 - New skill pipeline: validate → eval → assign tier → index
@@ -640,7 +641,7 @@ Skills are not "publish and forget." Loom continuously re-evaluates to ensure qu
 The eval_spec is the skill author's quality contract. It defines:
 
 - **Scenarios**: concrete input/output situations the skill should handle
-- **Quality dimensions**: named axes of quality (clarity, completeness, minimalism, etc.)
+- **Quality dimensions**: named axes of quality (the engine evaluates clarity, completeness, safety, and correctness; authors may define additional custom dimensions)
 - **Regression threshold**: minimum score to maintain current trust tier
 
 When the eval engine re-evaluates, it tests against the skill's own scenarios and scores against its own dimensions. A skill that was `community` but now scores below its regression threshold is flagged and demoted to `experimental` if not remediated.
@@ -661,14 +662,16 @@ These signals feed into:
 
 ### 5.4 Eval Engine Resilience
 
+> **Security architecture**: The eval pipeline's threat model (prompt injection, eval gaming, trust escalation) and the data-only evaluation protocol are detailed in the [M2 Evaluation Security Spec](2026-03-23-m2-quality-trust-spec.md). This section covers resilience to non-determinism and availability; the M2 spec covers resilience to adversarial content.
+
 The eval engine uses LLMs, which introduces non-determinism and availability risk. Mitigations:
 
 **Deterministic baseline:** Every eval run includes deterministic structural checks (frontmatter validity, dependency schema, token count, overlap detection via embedding distance). These produce a hard pass/fail independent of LLM availability. A skill that fails structural checks is rejected regardless of LLM scores.
 
-**LLM scoring with tolerance bands:** LLM-evaluated dimensions (clarity, completeness, minimalism) are scored on a 0-1 scale. To account for non-determinism:
+**LLM scoring with tolerance bands:** LLM-evaluated dimensions (clarity, completeness, safety, correctness) are scored on a 0-1 scale. To account for non-determinism:
 - Each eval runs the LLM scorer 3 times and takes the median score per dimension
 - Amendment auto-merge requires the amended version to score >= original minus a tolerance of 0.05 on every dimension (i.e., `B >= A - 0.05` per dimension, not strict `B >= A`)
-- If the 3 scores for any dimension have a spread > 0.15, the result is flagged as low-confidence and sent to human review
+- If the 3 scores for any dimension have a spread > 0.25, the result is flagged as low-confidence and sent to human review (see [M2 spec §3.3.5](2026-03-23-m2-quality-trust-spec.md) for the full confidence threshold table)
 
 **Provider fallback:** The eval engine supports multiple LLM providers. If the primary provider is unavailable, it falls back to a secondary. If all providers are down, submissions enter a "pending eval" queue and structural-only results are used for temporary tier assignment.
 
@@ -926,17 +929,9 @@ Initial taxonomy is maintainer-curated. Stewards can propose additions. New skil
 | version, author_id, signature, trust_tier | | same as skills |
 | embedding | vector(1536) | |
 
-**eval_results**
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| skill_id | uuid | FK |
-| version | text | version evaluated |
-| score | float | 0-1 composite |
-| dimensions | jsonb | per-dimension scores |
-| evaluator_version | text | eval engine version |
-| trigger | enum | submission, amendment, scheduled, usage_signal, model_drift |
-| created_at | timestamptz | |
+**eval_jobs** + **eval_dimension_runs** (see [M2 Evaluation Security Spec §8](2026-03-23-m2-quality-trust-spec.md) for full schema)
+
+`eval_jobs` tracks pipeline-level runs (status, composite_score, dimension_scores JSONB, content_hash, evaluator_version, trigger_type, injection_flagged). `eval_dimension_runs` stores individual LLM runs per dimension (score, evidence, injection_detected, prompt_variant, model_id). A `trust_audit_log` table tracks tier changes.
 
 **usage_reports**
 | Column | Type | Notes |
@@ -955,7 +950,7 @@ Initial taxonomy is maintainer-curated. Stewards can propose additions. New skil
 | id | uuid | PK |
 | handle | text | unique |
 | email | text | |
-| signing_public_key | text | ed25519 |
+| ~~signing_public_key~~ | — | Superseded by `signing_keys` table (M2) — supports multiple keys, rotation, and revocation |
 | role | enum | contributor, steward, maintainer |
 | created_at | timestamptz | |
 

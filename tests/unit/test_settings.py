@@ -10,7 +10,7 @@ def test_settings_loads_defaults():
     assert settings.embedding.model == "openai/text-embedding-3-small"
     assert settings.embedding.dimensions == 1536
     assert settings.llm.provider == "openrouter"
-    assert settings.llm.model == "google/gemini-3-flash"
+    assert settings.llm.model == "google/gemini-3-flash-preview"
     assert settings.api.port == 8000
 
 

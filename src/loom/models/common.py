@@ -77,6 +77,27 @@ class DependencyDeclaration(BaseModel):
     trust_requirements: TrustRequirements = TrustRequirements()
 
 
+class EvalStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class TriggerType(StrEnum):
+    SUBMISSION = "submission"
+    AMENDMENT = "amendment"
+    SCHEDULED = "scheduled"
+    USAGE_SIGNAL = "usage_signal"
+
+
+class EvalDimension(StrEnum):
+    CLARITY = "clarity"
+    COMPLETENESS = "completeness"
+    SAFETY = "safety"
+    CORRECTNESS = "correctness"
+
+
 class EvalScenario(BaseModel):
     description: str
     input_context: str

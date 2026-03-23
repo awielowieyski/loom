@@ -14,7 +14,8 @@ _SKILL_COLUMNS = (
     "id, slug, name, description, content, category_id, tags, scope, "
     "version, author_id, signature, trust_tier, cost_profile, "
     "cost_drivers, estimated_duration, dependencies, eval_spec, "
-    "extends, embedding, created_at, updated_at"
+    "extends, embedding, eval_status, composite_score, "
+    "latest_eval_job_id, signature_key_fingerprint, created_at, updated_at"
 )
 
 # Lighter column list for ranking / summary use — excludes content, embedding, eval_spec
@@ -374,3 +375,24 @@ class SkillRepo:
             *params,
         )
         return [_row_to_summary(row) for row in rows]
+
+    async def update_eval_fields(
+        self,
+        skill_id: uuid_mod.UUID,
+        eval_status: str,
+        composite_score: float | None = None,
+        latest_eval_job_id: uuid_mod.UUID | None = None,
+    ) -> None:
+        """Update evaluation-related fields on a skill row."""
+        await self._conn.execute(
+            """UPDATE skills
+               SET eval_status = $1,
+                   composite_score = $2,
+                   latest_eval_job_id = $3,
+                   updated_at = now()
+               WHERE id = $4""",
+            eval_status,
+            composite_score,
+            latest_eval_job_id,
+            skill_id,
+        )
