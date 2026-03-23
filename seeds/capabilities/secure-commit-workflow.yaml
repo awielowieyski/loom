@@ -1,0 +1,87 @@
+slug: "secure-commit-workflow"
+name: "Secure Commit Workflow"
+description: "Write unit tests, perform security review, then create a conventional commit — ensuring code is tested and secure before it lands"
+version: "1.0.0"
+scope: "community"
+trust_tier: "community"
+
+steps:
+  - skill_ref: "loom://write-unit-tests"
+    role: "Generate unit tests for the changed code"
+    inputs:
+      code: "$input.code"
+      context: "$input.context"
+    outputs:
+      tests: "$result"
+    required: true
+    data_classification: "internal"
+
+  - skill_ref: "loom://review-security"
+    role: "Review the code and tests for security vulnerabilities"
+    inputs:
+      diff: "$input.diff"
+      tests: "$steps[0].tests"
+    outputs:
+      security_review: "$result"
+    required: true
+    data_classification: "internal"
+
+  - skill_ref: "loom://conventional-commit"
+    role: "Create a conventional commit with the tested and reviewed changes"
+    inputs:
+      review: "$steps[1].security_review"
+    outputs:
+      commit: "$result"
+    required: true
+    data_classification: "internal"
+
+preconditions:
+  - "Code changes staged or identified for commit"
+  - "Test framework configured in the project"
+
+expected_outcome: "Changes are unit-tested, security-reviewed, and committed following conventional commit conventions"
+
+data_flow:
+  - from_step: "write-unit-tests"
+    to_step: "review-security"
+    classification: "internal"
+  - from_step: "review-security"
+    to_step: "conventional-commit"
+    classification: "internal"
+
+dependencies:
+  mcp_servers:
+    - uri: "filesystem"
+      required: true
+      scopes: ["read", "write"]
+    - uri: "git"
+      required: true
+      scopes: ["read", "write"]
+  apis: []
+  trust_requirements:
+    data_classification: "none"
+    network_access: false
+    privacy_impact:
+      external_data_sharing: false
+      input_logging: "none"
+      data_retention: "none"
+
+cost_profile: "low"
+cost_drivers: []
+estimated_duration: "slow"
+
+eval_spec:
+  scenarios:
+    - description: "New feature with security-sensitive code"
+      input_context: "Adding a user authentication endpoint that handles passwords"
+      success_criteria: "Unit tests cover happy and error paths; security review flags plaintext password handling; commit message follows conventional format"
+    - description: "Bug fix in data processing"
+      input_context: "Fixing an off-by-one error in a data pagination function"
+      success_criteria: "Unit tests reproduce the bug and verify the fix; security review finds no issues; commit uses 'fix:' prefix"
+  quality_dimensions:
+    - name: "test_coverage"
+      description: "Generated tests cover the primary code paths of the changes"
+    - name: "security_thoroughness"
+      description: "Security review checks for OWASP top-10 relevant issues"
+    - name: "commit_quality"
+      description: "Commit message follows conventional commit format with accurate scope and description"

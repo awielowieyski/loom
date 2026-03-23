@@ -1,0 +1,82 @@
+slug: "release-documentation"
+name: "Release Documentation"
+description: "Generate complete release documentation including AI-summarised release notes, changelog update, and API docs regeneration"
+version: "1.0.0"
+scope: "community"
+trust_tier: "community"
+
+steps:
+  - skill_ref: "loom://release-notes-ai"
+    role: "Generate AI-summarised release notes from git history"
+    inputs:
+      version: "$input.version"
+    outputs:
+      release_notes: "$result"
+    required: true
+    data_classification: "internal"
+
+  - skill_ref: "loom://changelog-update"
+    role: "Update CHANGELOG.md with new version entry"
+    inputs:
+      version: "$input.version"
+      notes: "$steps[0].release_notes"
+    outputs:
+      changelog: "$result"
+    required: true
+    data_classification: "internal"
+
+  - skill_ref: "loom://api-docs-generate"
+    role: "Regenerate API documentation reflecting changes"
+    inputs: {}
+    outputs:
+      api_docs: "$result"
+    required: false
+    data_classification: "internal"
+
+preconditions:
+  - "Git repository with tagged releases"
+  - "Version number for the release"
+
+expected_outcome: "Complete release documentation package: AI-summarised release notes, updated changelog, and refreshed API docs"
+
+data_flow:
+  - from_step: "release-notes-ai"
+    to_step: "changelog-update"
+    classification: "internal"
+
+dependencies:
+  mcp_servers:
+    - uri: "filesystem"
+      required: true
+      scopes: ["read", "write"]
+    - uri: "git"
+      required: true
+      scopes: ["read"]
+  apis: []
+  trust_requirements:
+    data_classification: "none"
+    network_access: false
+    privacy_impact:
+      external_data_sharing: false
+      input_logging: "none"
+      data_retention: "none"
+
+cost_profile: "moderate"
+cost_drivers: ["llm_inference"]
+estimated_duration: "slow"
+
+eval_spec:
+  scenarios:
+    - description: "Minor release with bug fixes"
+      input_context: "Version 1.2.3 release with 5 bug-fix commits since 1.2.2"
+      success_criteria: "Release notes summarise fixes in user-friendly language; changelog follows Keep a Changelog format; API docs regenerated if present"
+    - description: "Major release with breaking changes"
+      input_context: "Version 2.0.0 release with deprecations, new features, and breaking changes"
+      success_criteria: "Release notes clearly highlight breaking changes; changelog has separate sections for added, changed, removed; API docs reflect new endpoints"
+  quality_dimensions:
+    - name: "completeness"
+      description: "All three documentation artefacts are produced (or skipped with explanation for optional steps)"
+    - name: "consistency"
+      description: "Version numbers and change descriptions are consistent across all artefacts"
+    - name: "user_clarity"
+      description: "Release notes are written for end users, not developers"
