@@ -26,6 +26,9 @@ class ScoreAggregator:
     Uses median consensus for outlier resistance.
     """
 
+    def __init__(self, *, pass_threshold: float = PASS_THRESHOLD) -> None:
+        self._pass_threshold = pass_threshold
+
     def aggregate(
         self,
         structural: StructuralReport,
@@ -88,8 +91,8 @@ class ScoreAggregator:
         if sandbox is not None:
             sandbox_passed = sandbox.passed
 
-        # Pass decision: composite >= threshold AND sandbox not failed.
-        passed = composite >= PASS_THRESHOLD
+        # Pass decision: composite >= threshold AND sandbox not failed AND no injection.
+        passed = composite >= self._pass_threshold and not injection_flagged
         if sandbox is not None and not sandbox.passed:
             passed = False
 

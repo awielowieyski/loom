@@ -167,7 +167,10 @@ class LLMEvaluator:
                 result = await agent.run(user_message)
                 # pydantic-ai Agent.run returns a RunResult; extract text
                 raw_text = result.output if hasattr(result, "output") else str(result)
-                return _parse_response(raw_text, dimension)
+                dim_result = _parse_response(raw_text, dimension)
+                dim_result.prompt_variant = variant.name
+                dim_result.model_id = self._model_id
+                return dim_result
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
                 attempts += 1

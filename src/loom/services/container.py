@@ -14,6 +14,8 @@ from loom.services.discovery import DiscoveryService
 from loom.services.eval import EvalService
 from loom.services.prompt_registry import PromptRegistry
 from loom.services.registry import RegistryService
+from loom.services.score_aggregator import ScoreAggregator  # noqa: TC001
+from loom.services.static_analyser import StaticAnalyser  # noqa: TC001
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -38,6 +40,8 @@ class ServiceContainer:
     # M2: eval pipeline components
     prompt_registry: PromptRegistry
     eval_repo_factory: Callable[[asyncpg.Connection], EvalRepo]
+    static_analyser: StaticAnalyser
+    score_aggregator: ScoreAggregator
 
 
 async def create_container(settings: object) -> ServiceContainer:
@@ -53,6 +57,14 @@ async def create_container(settings: object) -> ServiceContainer:
     embed_cache: TTLCache[str, list[float]] = TTLCache(maxsize=128, ttl=300)
 
     prompt_registry = PromptRegistry()
+
+    pipeline_cfg = settings.pipeline
+    static_analyser = StaticAnalyser(
+        max_content_length=pipeline_cfg.max_content_length,
+        max_steps=pipeline_cfg.max_steps,
+        max_dependencies=pipeline_cfg.max_dependencies,
+    )
+    score_aggregator = ScoreAggregator(pass_threshold=pipeline_cfg.pass_threshold)
 
     def _skill_repo(conn: asyncpg.Connection) -> SkillRepo:
         return SkillRepo(conn)
@@ -83,6 +95,8 @@ async def create_container(settings: object) -> ServiceContainer:
         discovery_service_factory=_discovery,
         prompt_registry=prompt_registry,
         eval_repo_factory=_eval_repo,
+        static_analyser=static_analyser,
+        score_aggregator=score_aggregator,
     )
 
 

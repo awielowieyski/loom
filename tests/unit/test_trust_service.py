@@ -29,8 +29,7 @@ def _make_service(eval_obj: object | None = None) -> TrustService:
     """Build a TrustService with mocked repos."""
     eval_repo = AsyncMock()
     eval_repo.get_latest_eval_for_skill.return_value = eval_obj
-    skill_repo = AsyncMock()
-    return TrustService(eval_repo=eval_repo, skill_repo=skill_repo)
+    return TrustService(eval_repo=eval_repo)
 
 
 SKILL_ID = uuid.uuid4()

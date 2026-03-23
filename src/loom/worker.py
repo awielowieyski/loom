@@ -12,9 +12,9 @@ from typing import Any
 from arq import cron  # noqa: F401 — re-exported for arq discovery
 from arq.connections import RedisSettings
 
-logger = logging.getLogger(__name__)
+from loom.services.score_aggregator import EVALUATOR_VERSION
 
-EVALUATOR_VERSION = "m2-v0.1.0"
+logger = logging.getLogger(__name__)
 
 
 async def startup(ctx: dict[str, Any]) -> None:
@@ -40,8 +40,13 @@ async def startup(ctx: dict[str, Any]) -> None:
     def agent_factory(system_prompt: str) -> Agent[None, str]:
         return Agent(llm_model, system_prompt=system_prompt, output_type=str)
 
-    static_analyser = StaticAnalyser()
-    score_aggregator = ScoreAggregator()
+    pipeline_cfg = settings.pipeline
+    static_analyser = StaticAnalyser(
+        max_content_length=pipeline_cfg.max_content_length,
+        max_steps=pipeline_cfg.max_steps,
+        max_dependencies=pipeline_cfg.max_dependencies,
+    )
+    score_aggregator = ScoreAggregator(pass_threshold=pipeline_cfg.pass_threshold)
     llm_evaluator = LLMEvaluator(
         agent_factory=agent_factory,
         prompt_registry=prompt_registry,
@@ -72,119 +77,115 @@ async def run_eval_job(ctx: dict[str, Any], skill_id: str, trigger: str) -> dict
     """Fetch skill, create eval job record, run pipeline, persist result.
 
     Updates the skill's eval_status and composite_score on completion.
+    The DB connection is released before the (potentially long-running) pipeline
+    evaluation and re-acquired afterwards to persist results.
     """
     import uuid
 
     from loom.services.eval_pipeline import EvalPipelineService
 
     pool = ctx["pool"]
+    settings = ctx["settings"]
+    runs_per_dimension: int = settings.pipeline.runs_per_dimension
 
+    # --- Phase A: fetch skill & create job (short DB interaction) ---
     async with pool.acquire() as conn:
         skill_repo = ctx["skill_repo_factory"](conn)
         eval_repo = ctx["eval_repo_factory"](conn)
 
-        # Fetch skill
         skill = await skill_repo.get_by_id(uuid.UUID(skill_id))
         if skill is None:
             logger.error("Skill %s not found, aborting eval job", skill_id)
             return {"error": f"Skill {skill_id} not found"}
 
-        # Create eval job record
         job = await eval_repo.create_eval_job(
             skill_id=skill.id,
             skill_version=skill.version,
-            content_hash="",  # Will be set after static analysis
+            content_hash="",
             trigger_type=trigger,
             evaluator_version=EVALUATOR_VERSION,
         )
 
-        # Mark as running
         now = datetime.now(UTC)
         await eval_repo.update_eval_job(job.id, status="running", started_at=now)
+        await skill_repo.update_eval_fields(skill.id, eval_status="running")
 
-        # Update skill eval_status
-        await conn.execute(
-            "UPDATE skills SET eval_status = $1 WHERE id = $2",
-            "running",
-            skill.id,
+    # --- Phase B: run pipeline (no DB connection held) ---
+    try:
+        pipeline = EvalPipelineService(
+            static_analyser=ctx["static_analyser"],
+            content_isolator=ctx["isolate_content"],
+            llm_evaluator=ctx["llm_evaluator"],
+            score_aggregator=ctx["score_aggregator"],
         )
 
-        try:
-            # Build pipeline (per-request because LLMEvaluator holds agent_factory)
-            pipeline = EvalPipelineService(
-                static_analyser=ctx["static_analyser"],
-                content_isolator=ctx["isolate_content"],
-                llm_evaluator=ctx["llm_evaluator"],
-                score_aggregator=ctx["score_aggregator"],
-            )
+        result, structural, raw_dimensions = await pipeline.evaluate(
+            skill, runs_per_dimension=runs_per_dimension
+        )
 
-            result, structural, raw_dimensions = await pipeline.evaluate(skill)
-
-            # Persist individual dimension runs.
-            for dim, runs in raw_dimensions.items():
-                for idx, run in enumerate(runs):
-                    await eval_repo.create_dimension_run(
-                        eval_job_id=job.id,
-                        dimension=dim.value,
-                        run_index=idx,
-                        score=run.score,
-                        evidence=run.evidence,
-                        injection_detected=run.injection_detected,
-                        injection_detail=run.injection_detail,
-                        confidence=run.confidence,
-                    )
-
-            completed_at = datetime.now(UTC)
-            await eval_repo.update_eval_job(
-                job.id,
-                status="completed",
-                content_hash=result.content_hash,
-                structural_report=structural.model_dump(),
-                composite_score=result.composite_score,
-                dimension_scores=result.dimension_scores,
-                dimension_confidence=result.dimension_confidence,
-                injection_flagged=result.injection_flagged,
-                sandbox_passed=result.sandbox_passed,
-                overall_confidence=result.overall_confidence,
-                completed_at=completed_at,
-            )
-
-            # Update skill with eval results
-            await conn.execute(
-                """UPDATE skills
-                   SET eval_status = $1,
-                       composite_score = $2,
-                       latest_eval_job_id = $3
-                   WHERE id = $4""",
-                "completed",
-                result.composite_score,
-                job.id,
-                skill.id,
-            )
-
-            logger.info(
-                "Eval job %s completed for skill %s — score=%.2f, passed=%s",
-                job.id,
-                skill_id,
-                result.composite_score,
-                result.passed,
-            )
-            return {
-                "job_id": str(job.id),
-                "passed": result.passed,
-                "composite_score": result.composite_score,
-            }
-
-        except Exception:
-            logger.exception("Eval job %s failed for skill %s", job.id, skill_id)
+    except Exception:
+        logger.exception("Eval job %s failed for skill %s", job.id, skill_id)
+        # Acquire a fresh connection to persist the failure.
+        async with pool.acquire() as conn:
+            eval_repo = ctx["eval_repo_factory"](conn)
+            skill_repo = ctx["skill_repo_factory"](conn)
             completed_at = datetime.now(UTC)
             await eval_repo.update_eval_job(job.id, status="failed", completed_at=completed_at)
-            await conn.execute(
-                "UPDATE skills SET eval_status = $1 WHERE id = $2",
-                "failed",
-                skill.id,
-            )
-            raise
+            await skill_repo.update_eval_fields(skill.id, eval_status="failed")
+        raise
+
+    # --- Phase C: persist results (fresh DB connection) ---
+    async with pool.acquire() as conn:
+        eval_repo = ctx["eval_repo_factory"](conn)
+        skill_repo = ctx["skill_repo_factory"](conn)
+
+        for dim, runs in raw_dimensions.items():
+            for idx, run in enumerate(runs):
+                await eval_repo.create_dimension_run(
+                    eval_job_id=job.id,
+                    dimension=dim.value,
+                    run_index=idx,
+                    score=run.score,
+                    evidence=run.evidence,
+                    injection_detected=run.injection_detected,
+                    injection_detail=run.injection_detail,
+                    confidence=run.confidence,
+                )
+
+        completed_at = datetime.now(UTC)
+        await eval_repo.update_eval_job(
+            job.id,
+            status="completed",
+            content_hash=result.content_hash,
+            structural_report=structural.model_dump(),
+            composite_score=result.composite_score,
+            dimension_scores=result.dimension_scores,
+            dimension_confidence=result.dimension_confidence,
+            injection_flagged=result.injection_flagged,
+            sandbox_passed=result.sandbox_passed,
+            overall_confidence=result.overall_confidence,
+            completed_at=completed_at,
+        )
+
+        await skill_repo.update_eval_fields(
+            skill.id,
+            eval_status="completed",
+            composite_score=result.composite_score,
+            latest_eval_job_id=job.id,
+        )
+
+    logger.info(
+        "Eval job %s completed for skill %s — score=%.2f, passed=%s",
+        job.id,
+        skill_id,
+        result.composite_score,
+        result.passed,
+    )
+    return {
+        "job_id": str(job.id),
+        "passed": result.passed,
+        "composite_score": result.composite_score,
+    }
 
 
 def _redis_settings_from_url(url: str) -> RedisSettings:

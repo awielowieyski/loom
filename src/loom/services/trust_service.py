@@ -24,7 +24,6 @@ class TrustService:
     def __init__(
         self,
         eval_repo: Any,
-        skill_repo: Any,
         *,
         promotion_threshold: float = 0.70,
         safety_floor: float = 0.60,
@@ -32,7 +31,6 @@ class TrustService:
         min_success_rate: float = 0.80,
     ) -> None:
         self._eval_repo = eval_repo
-        self._skill_repo = skill_repo
         self._promotion_threshold = promotion_threshold
         self._safety_floor = safety_floor
         self._min_usage_count = min_usage_count

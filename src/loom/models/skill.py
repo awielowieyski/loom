@@ -53,6 +53,10 @@ class Skill(BaseModel):
     signature: str | None = None
     extends: str | None = None
     embedding: list[float] | None = Field(default=None, exclude=True)
+    eval_status: str | None = None
+    composite_score: float | None = None
+    latest_eval_job_id: str | None = None
+    signature_key_fingerprint: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

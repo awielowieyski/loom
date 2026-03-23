@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 from loom.models.common import EvalDimension
-from loom.models.skill import SkillCreate
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -41,27 +40,6 @@ class SandboxRunnerProtocol(Protocol):
     ) -> SandboxResult: ...
 
 
-def _skill_to_skill_create(skill: Skill) -> SkillCreate:
-    """Convert a Skill (DB record) to SkillCreate for static analysis."""
-    return SkillCreate(
-        slug=skill.slug,
-        name=skill.name,
-        description=skill.description,
-        content=skill.content,
-        category_slug="",  # Not needed for static analysis
-        version=skill.version,
-        tags=skill.tags,
-        scope=skill.scope,
-        trust_tier=skill.trust_tier,
-        cost_profile=skill.cost_profile,
-        cost_drivers=skill.cost_drivers,
-        estimated_duration=skill.estimated_duration,
-        dependencies=skill.dependencies,
-        eval_spec=skill.eval_spec,
-        extends=skill.extends,
-    )
-
-
 def _str_keys_to_enum(
     results: dict[str, list[DimensionResult]],
 ) -> dict[EvalDimension, list[DimensionResult]]:
@@ -95,7 +73,9 @@ class EvalPipelineService:
         self._sandbox_runner = sandbox_runner
 
     async def evaluate(
-        self, skill: Skill
+        self,
+        skill: Skill,
+        runs_per_dimension: int = 3,
     ) -> tuple[EvalResult, StructuralReport, dict[EvalDimension, list[DimensionResult]]]:
         """Run the full evaluation pipeline on a skill.
 
@@ -103,16 +83,14 @@ class EvalPipelineService:
 
         Args:
             skill: The skill to evaluate.
+            runs_per_dimension: Number of LLM evaluation runs per dimension.
 
         Returns:
             Tuple of (EvalResult, StructuralReport, raw dimension runs).
             Raw dimension runs are empty dict on structural failure.
         """
-        # Convert Skill -> SkillCreate for static analysis.
-        skill_create = _skill_to_skill_create(skill)
-
-        # Phase 1: Static analysis.
-        structural: StructuralReport = self._static_analyser.analyse(skill_create)
+        # Phase 1: Static analysis (accepts Skill directly).
+        structural: StructuralReport = self._static_analyser.analyse(skill)
         if not structural.passed:
             result = self._score_aggregator.aggregate(
                 structural=structural,
@@ -124,7 +102,9 @@ class EvalPipelineService:
         fragments = self._content_isolator(skill, structural)
 
         # Phase 3: LLM evaluation.
-        raw_dimensions = await self._llm_evaluator.evaluate_all(fragments)
+        raw_dimensions = await self._llm_evaluator.evaluate_all(
+            fragments, n_runs=runs_per_dimension
+        )
         dimensions = _str_keys_to_enum(raw_dimensions)
 
         # Phase 4: Sandbox execution (optional).

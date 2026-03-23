@@ -11,7 +11,9 @@ from loom.models.eval import InjectionIndicator, StructuralReport
 
 if TYPE_CHECKING:
     from loom.models.common import EvalSpec
-    from loom.models.skill import SkillCreate
+    from loom.models.skill import Skill, SkillCreate
+
+    SkillLike = SkillCreate | Skill
 
 MIN_CONTENT_LENGTH = 10
 MAX_CONTENT_LENGTH = 50_000
@@ -30,7 +32,7 @@ INJECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
             re.IGNORECASE,
         ),
     ),
-    ("role_assignment", re.compile(r"(system|assistant|user)\s*:", re.IGNORECASE)),
+    ("role_assignment", re.compile(r"<\|?(system|assistant|user)\|?>", re.IGNORECASE)),
     ("special_tokens", re.compile(r"<\|im_(start|end)\|>")),
     ("role_tags", re.compile(r"<\|(system|user|assistant)\|>")),
     ("identity_override", re.compile(r"you\s+are\s+(now|a|an)\s+", re.IGNORECASE)),
@@ -123,7 +125,18 @@ class StaticAnalyser:
     Pure functions, no external dependencies, no async.
     """
 
-    def analyse(self, skill: SkillCreate) -> StructuralReport:
+    def __init__(
+        self,
+        *,
+        max_content_length: int = MAX_CONTENT_LENGTH,
+        max_steps: int = MAX_STEPS,
+        max_dependencies: int = MAX_DEPENDENCIES,
+    ) -> None:
+        self._max_content_length = max_content_length
+        self._max_steps = max_steps
+        self._max_dependencies = max_dependencies
+
+    def analyse(self, skill: SkillLike) -> StructuralReport:
         """Run all static checks and return a StructuralReport."""
         errors: list[str] = []
         warnings: list[str] = []
@@ -131,9 +144,9 @@ class StaticAnalyser:
         # --- Content length bounds ---
         if not skill.content or len(skill.content) < MIN_CONTENT_LENGTH:
             errors.append(f"Skill content must be at least {MIN_CONTENT_LENGTH} characters long")
-        if skill.content and len(skill.content) > MAX_CONTENT_LENGTH:
+        if skill.content and len(skill.content) > self._max_content_length:
             errors.append(
-                f"Skill content exceeds maximum length of {MAX_CONTENT_LENGTH} characters"
+                f"Skill content exceeds maximum length of {self._max_content_length} characters"
             )
 
         # --- Eval spec validation ---
@@ -145,8 +158,10 @@ class StaticAnalyser:
 
         # --- Dependency count ---
         dep_count = len(skill.dependencies.mcp_servers) + len(skill.dependencies.apis)
-        if dep_count > MAX_DEPENDENCIES:
-            errors.append(f"Total dependencies ({dep_count}) exceeds maximum of {MAX_DEPENDENCIES}")
+        if dep_count > self._max_dependencies:
+            errors.append(
+                f"Total dependencies ({dep_count}) exceeds maximum" f" of {self._max_dependencies}"
+            )
 
         # --- MCP URI validation ---
         for dep in skill.dependencies.mcp_servers:
@@ -164,8 +179,8 @@ class StaticAnalyser:
 
             # Step count
             step_count = _count_steps(normalised)
-            if step_count > MAX_STEPS:
-                errors.append(f"Step count ({step_count}) exceeds maximum of {MAX_STEPS}")
+            if step_count > self._max_steps:
+                errors.append(f"Step count ({step_count}) exceeds maximum of {self._max_steps}")
 
             # Nesting depth
             nesting = _max_nesting_depth(normalised)

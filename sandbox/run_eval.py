@@ -95,7 +95,7 @@ def main() -> None:
             else:
                 scenarios_passed += 1
 
-        passed = len(errors) == 0 and scenarios_run > 0
+        passed = len(errors) == 0 and (scenarios_run > 0 or not eval_scenarios)
         result = {
             "passed": passed,
             "scenarios_run": scenarios_run,
