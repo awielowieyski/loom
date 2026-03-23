@@ -226,46 +226,127 @@ M2i (Pipeline + Static) ──→ M2ii (LLM Eval + Aggregation)
 
 **What you can demo:** Ask an agent to "produce a vendor risk briefing." Loom returns a multi-step execution plan with each step's full instructions embedded, dependencies pre-checked, data flow declared. The agent follows the plan step by step, passing outputs between steps. One request, one resolved plan, multi-skill execution.
 
-### Capability Registry
+**Full design:** [M3 Composition Security Spec](2026-03-23-m3-composition-spec.md) — capability model, resolution semantics, extends merge strategy, and composition threat model with defences.
 
-- [ ] Capability data model: steps with skill references, data flow, preconditions, expected outcome
+M3 is divided into four sub-milestones that sequence from data model through resolution to security hardening:
+
+```
+M3i (Model & Registry) ──→ M3ii (Resolution)
+                                  │
+                                  ▼
+                           M3iii (Extends & Security)
+                                  │
+                                  ▼
+                           M3iv (API, Seeds, Integration)
+```
+
+### M3i: Capability Model & Registry
+
+**Proves:** Capabilities exist as first-class objects with validated structure and versioning.
+
+#### Data Model
+- [ ] `CapabilityStep` model: skill_ref (URI), role, inputs, outputs, required, data_classification
+- [ ] `DataFlowEdge` model: from_step, to_step, classification
+- [ ] `CapabilityCreate`, `Capability`, `CapabilitySummary`, `CapabilityUpdate`, `CapabilityVersion` models
+- [ ] `ResolvedStep`, `ResolvedCapability`, `ResolvedResult` models (type-discriminated union)
+
+#### Database
+- [ ] `capabilities` table: mirrors skills structure with steps (JSONB), preconditions, expected_outcome, data_flow
+- [ ] `capability_versions` table: version history with same pattern as skill_versions
+- [ ] Alembic migration for both tables
+- [ ] Indexes: category, trust_tier, scope, tags (GIN), embedding (ivfflat)
+
+#### Registry
+- [ ] `CapabilityRepo`: CRUD operations following `SkillRepo` patterns (asyncpg, explicit SQL)
 - [ ] Capability CRUD with versioning (same version model as skills)
-- [ ] Step reference validation: all referenced skills exist and meet minimum trust tier
+- [ ] Step reference validation: all skill_ref values contain `://` prefix
+- [ ] Step reference existence check: all referenced skills exist and meet minimum trust tier
 - [ ] Dependency aggregation: union of all steps' dependencies, with per-step satisfied/missing
-- [ ] Data flow validation: outputs of step N are available as inputs to step N+1 where declared
+- [ ] Data flow validation: outputs of step N are available as inputs to step N+M where declared
 - [ ] Cost/time aggregation from constituent skills (with override support)
 
-### Resolution
+### M3ii: Capability Resolution
 
+**Proves:** Capabilities are discoverable and resolvable with full execution plans.
+
+#### Resolution Service
 - [ ] `resolve_capability(task_description, context?)` → ResolvedCapability
 - [ ] Full plan resolution: each step contains the complete resolved skill content (no further lookups needed)
 - [ ] Per-step dependency status based on agent's declared `available_tools`
 - [ ] `required: false` steps marked as skippable when dependencies unmet
-- [ ] Capability-level eval_spec storage and validation
+- [ ] Effective trust tier computation: minimum across all steps' skills
+- [ ] Trust warnings when experimental skills are present in a capability
 
-### Semantic Integration
-
-- [ ] Capabilities indexed with embeddings alongside skills
+#### Semantic Integration
+- [ ] Capabilities indexed with embeddings alongside skills (combined vector search)
 - [ ] `resolve` returns capabilities when they match better than atomic skills (with type indicator)
-- [ ] `search` includes capabilities in results (filterable)
+- [ ] `search` includes capabilities in results (filterable by type)
 
-### Extends for Capabilities
+#### MCP Tools
+- [ ] `resolve_capability(task_description, context?)` MCP tool
+- [ ] Update `resolve()` to return `ResolvedResult` with type discriminator
+- [ ] Update `search()` to include capabilities with type filter
 
-- [ ] Capabilities can use `extends` to layer on top of other capabilities
-- [ ] Cross-source skill references in steps: `loom://` and `corp://` URI prefixes validated (corp:// returns "not available" in public Loom, but the schema is valid)
+### M3iii: Extends for Capabilities + Composition Security
 
-### Layered Adaptation
+**Proves:** Capabilities can be layered safely. Adversarial composition attacks are detected and blocked.
 
-- [ ] Reference Python implementation of `extends` chain resolution and merge semantics
-- [ ] Demo: community capability + policy overlay + personal override merged client-side into one resolved result
-- [ ] Tests for precedence, version pinning, and local override behavior
+#### Extends Support
+- [ ] Capability extends support in `ExtendsResolver`: parse `loom://` and `corp://` URIs for capabilities
+- [ ] Append-only merge enforcement: extending capabilities can ADD steps but NOT replace or remove base steps
+- [ ] Base step preservation validation: verify inherited steps are unchanged
+- [ ] Data flow edge addition: extending capabilities can add edges referencing both inherited and new steps
+
+#### Security Rules
+- [ ] Minimum-trust-across-chain rule: composed result inherits LOWEST trust tier from all layers and all step skills
+- [ ] Cycle detection: visited URI set during extends chain resolution, reject on cycle with clear error
+- [ ] Maximum extends chain depth limit (10 levels)
+- [ ] Cross-source URI validation: `loom://` resolves only from public registry, `corp://` only from corporate instance
+- [ ] Mandatory URI prefix validation: step skill_ref without `://` rejected at creation
+
+#### Adversarial Test Suite
+- [ ] Test: experimental overlay + verified base → effective tier = experimental
+- [ ] Test: step without URI prefix rejected
+- [ ] Test: `loom://x` never resolves from corp source
+- [ ] Test: external data flow edge produces warning in resolved plan
+- [ ] Test: capability with mixed trust tiers reports minimum
+- [ ] Test: extends that modifies base step is rejected
+- [ ] Test: circular extends A→B→C→A produces cycle error
+- [ ] Test: extends chain exceeding depth limit rejected
+
+### M3iv: API, Seed Capabilities, Integration Tests
+
+**Proves:** Full capability lifecycle works end-to-end.
+
+#### API Routes
+- [ ] `POST /api/v1/capabilities` — create capability
+- [ ] `GET /api/v1/capabilities` — list capabilities with filters
+- [ ] `GET /api/v1/capabilities/search` — semantic search
+- [ ] `GET /api/v1/capabilities/{slug}` — get by slug
+- [ ] `PUT /api/v1/capabilities/{slug}` — update (version bump)
+- [ ] `POST /api/v1/capabilities/resolve` — resolve capability from task description
+- [ ] Update `POST /api/v1/skills/resolve` to support `?type=skill|capability|any`
+
+#### Seed Capabilities
+- [ ] `comprehensive-code-review`: review-pull-request + review-security + review-performance
+- [ ] `release-documentation`: release-notes-enriched + changelog-update + api-docs-generate
+- [ ] `accessibility-security-review`: review-accessibility + review-security
+
+#### Integration Tests
+- [ ] Capability CRUD round-trip test
+- [ ] Full plan resolution with embedded skill content
+- [ ] Unified resolve() returning both skills and capabilities
+- [ ] Extends chain resolution for capabilities
+- [ ] E2E demo: agent resolves a multi-step capability and executes it
 
 ### Deliverable
 
 - Full capability lifecycle: create, resolve, version, search
-- End-to-end demo: agent resolves a multi-step capability and executes it
-- Policy-overlay demo proving layered adaptation before full corporate deployment
-- At least 3 seed capabilities composing existing seed skills
+- Composition security model with adversarial test suite
+- Append-only extends for capabilities with cycle detection
+- Unified resolution returning skills or capabilities
+- 3 seed capabilities composing existing seed skills
+- End-to-end demo: agent resolves a multi-step capability
 
 ---
 
