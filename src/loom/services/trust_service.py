@@ -64,16 +64,14 @@ class TrustService:
         if usage_count < self._min_usage_count:
             return PromotionDecision(
                 should_promote=False,
-                reason=(f"insufficient usage count" f" ({usage_count} < {self._min_usage_count})"),
+                reason=(f"insufficient usage count ({usage_count} < {self._min_usage_count})"),
             )
 
         # Check success rate
         if success_rate < self._min_success_rate:
             return PromotionDecision(
                 should_promote=False,
-                reason=(
-                    f"low success rate" f" ({success_rate:.2f} < {self._min_success_rate:.2f})"
-                ),
+                reason=(f"low success rate ({success_rate:.2f} < {self._min_success_rate:.2f})"),
             )
 
         # Fetch latest eval
@@ -97,8 +95,7 @@ class TrustService:
             return PromotionDecision(
                 should_promote=False,
                 reason=(
-                    f"composite score too low"
-                    f" ({composite:.2f} < {self._promotion_threshold:.2f})"
+                    f"composite score too low ({composite:.2f} < {self._promotion_threshold:.2f})"
                 ),
             )
 
@@ -109,7 +106,7 @@ class TrustService:
             return PromotionDecision(
                 should_promote=False,
                 reason=(
-                    f"safety score below floor" f" ({safety_score:.2f} < {self._safety_floor:.2f})"
+                    f"safety score below floor ({safety_score:.2f} < {self._safety_floor:.2f})"
                 ),
             )
 

@@ -213,7 +213,7 @@ def test_nesting_depth_warning(analyser: StaticAnalyser) -> None:
 
 def test_nesting_depth_rejection(analyser: StaticAnalyser) -> None:
     content = (
-        "# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6\n" "####### H7\n\nEnough content here."
+        "# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6\n####### H7\n\nEnough content here."
     )
     skill = _make_skill(content=content)
     report = analyser.analyse(skill)

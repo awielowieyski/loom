@@ -21,7 +21,7 @@ _DIMENSION_RUN_COLUMNS = (
 )
 
 _TRUST_AUDIT_COLUMNS = (
-    "id, skill_id, previous_tier, new_tier, reason, " "eval_job_id, promoted_by, created_at"
+    "id, skill_id, previous_tier, new_tier, reason, eval_job_id, promoted_by, created_at"
 )
 
 

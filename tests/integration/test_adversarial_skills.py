@@ -286,7 +286,7 @@ class TestAdversarialSkills:
     @pytest.mark.asyncio
     async def test_eval_scenario_gaming(self) -> None:
         """Vague skill with elaborate eval scenarios designed to game scoring."""
-        content = "# Step 1: Do It\n\n" "Do the thing.\n"
+        content = "# Step 1: Do It\n\nDo the thing.\n"
         skill = make_test_skill(content=content)
 
         # Mock LLM: low clarity/completeness, high correctness.

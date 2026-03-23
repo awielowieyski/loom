@@ -160,7 +160,7 @@ class StaticAnalyser:
         dep_count = len(skill.dependencies.mcp_servers) + len(skill.dependencies.apis)
         if dep_count > self._max_dependencies:
             errors.append(
-                f"Total dependencies ({dep_count}) exceeds maximum" f" of {self._max_dependencies}"
+                f"Total dependencies ({dep_count}) exceeds maximum of {self._max_dependencies}"
             )
 
         # --- MCP URI validation ---
