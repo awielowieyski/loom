@@ -314,3 +314,31 @@ def test_aggregate_dependencies_deduplicates_api_by_name() -> None:
     result = CapabilityRegistryService.aggregate_dependencies(steps, deps)
     assert len(result.apis) == 1
     assert result.apis[0].name == "openai"
+
+
+def test_aggregate_dependencies_empty_deps() -> None:
+    """Aggregating empty dependency lists returns an empty declaration."""
+    steps = [_make_step("a")]
+    deps: list[DependencyDeclaration] = [DependencyDeclaration()]
+
+    result = CapabilityRegistryService.aggregate_dependencies(steps, deps)
+    assert result.mcp_servers == []
+    assert result.apis == []
+    assert result.trust_requirements.data_classification == "none"
+    assert result.trust_requirements.network_access is False
+
+
+def test_aggregate_dependencies_no_network_when_none_needs_it() -> None:
+    """network_access stays False when no step requires it."""
+    steps = [_make_step("a"), _make_step("b")]
+    deps = [
+        DependencyDeclaration(
+            trust_requirements=TrustRequirements(network_access=False),
+        ),
+        DependencyDeclaration(
+            trust_requirements=TrustRequirements(network_access=False),
+        ),
+    ]
+
+    result = CapabilityRegistryService.aggregate_dependencies(steps, deps)
+    assert result.trust_requirements.network_access is False
