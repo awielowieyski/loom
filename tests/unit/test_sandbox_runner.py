@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from loom.models.common import EvalScenario
-from loom.models.eval import CodeBlock, SandboxResult
+from loom.models.eval import CodeBlock, IsolatedFragments, SandboxResult
 from loom.services.sandbox_runner import SandboxRunner
 
 
@@ -31,6 +31,21 @@ def _make_code_block(**overrides: object) -> CodeBlock:
     }
     defaults.update(overrides)
     return CodeBlock(**defaults)
+
+
+def _make_fragments(
+    scenarios: list[dict] | None = None,
+    code_blocks: list[CodeBlock] | None = None,
+) -> IsolatedFragments:
+    default_scenario = _make_scenario().model_dump()
+    return IsolatedFragments(
+        content_hash="sha256:test",
+        metadata={"name": "Test"},
+        step_outline=["# Step 1"],
+        full_body="# Step 1\nContent",
+        eval_scenarios=scenarios if scenarios is not None else [default_scenario],
+        code_blocks=code_blocks or [_make_code_block()],
+    )
 
 
 class _AsyncIterator:
@@ -128,10 +143,7 @@ class TestSandboxRunner:
         docker = _make_docker_mock(stdout_data=expected)
         runner = SandboxRunner(docker, timeout_seconds=10)
 
-        result = await runner.execute(
-            eval_scenarios=[_make_scenario()],
-            code_blocks=[_make_code_block()],
-        )
+        result = await runner.execute(_make_fragments())
 
         assert isinstance(result, SandboxResult)
         assert result.passed is True
@@ -144,10 +156,7 @@ class TestSandboxRunner:
         docker = _make_docker_mock()
         runner = SandboxRunner(docker, memory_mb=512)
 
-        await runner.execute(
-            eval_scenarios=[_make_scenario()],
-            code_blocks=[],
-        )
+        await runner.execute(_make_fragments(code_blocks=[]))
 
         create_call = docker.containers.create_or_replace
         assert create_call.called
@@ -166,10 +175,7 @@ class TestSandboxRunner:
         docker = _make_docker_mock()
         runner = SandboxRunner(docker, timeout_seconds=10)
 
-        await runner.execute(
-            eval_scenarios=[_make_scenario()],
-            code_blocks=[],
-        )
+        await runner.execute(_make_fragments(code_blocks=[]))
 
         container = docker.containers.create_or_replace.return_value
         container.delete.assert_called_once_with(force=True)
@@ -180,10 +186,7 @@ class TestSandboxRunner:
 
         runner = SandboxRunner(docker, timeout_seconds=0.1)
 
-        result = await runner.execute(
-            eval_scenarios=[_make_scenario()],
-            code_blocks=[],
-        )
+        result = await runner.execute(_make_fragments(code_blocks=[]))
 
         assert result.passed is False
         assert any("timed out" in e.lower() for e in result.errors)
@@ -194,10 +197,7 @@ class TestSandboxRunner:
 
         runner = SandboxRunner(docker, timeout_seconds=0.1)
 
-        await runner.execute(
-            eval_scenarios=[_make_scenario()],
-            code_blocks=[],
-        )
+        await runner.execute(_make_fragments(code_blocks=[]))
 
         container = docker.containers.create_or_replace.return_value
         container.delete.assert_called_once_with(force=True)
@@ -214,10 +214,7 @@ class TestSandboxRunner:
         docker = _make_docker_mock(stdout_data=error_output, exit_code=1)
         runner = SandboxRunner(docker, timeout_seconds=10)
 
-        result = await runner.execute(
-            eval_scenarios=[_make_scenario()],
-            code_blocks=[],
-        )
+        result = await runner.execute(_make_fragments(code_blocks=[]))
 
         assert result.passed is False
         assert len(result.errors) > 0
@@ -232,10 +229,7 @@ class TestSandboxRunner:
 
         runner = SandboxRunner(docker, timeout_seconds=10)
 
-        result = await runner.execute(
-            eval_scenarios=[_make_scenario()],
-            code_blocks=[],
-        )
+        result = await runner.execute(_make_fragments(code_blocks=[]))
 
         assert result.passed is False
         assert any("no output" in e.lower() for e in result.errors)
@@ -250,10 +244,7 @@ class TestSandboxRunner:
 
         runner = SandboxRunner(docker, timeout_seconds=10)
 
-        result = await runner.execute(
-            eval_scenarios=[_make_scenario()],
-            code_blocks=[],
-        )
+        result = await runner.execute(_make_fragments(code_blocks=[]))
 
         assert result.passed is False
         assert any("parse" in e.lower() for e in result.errors)

@@ -11,10 +11,10 @@ from loom.models.eval import DimensionResult, InjectionIndicator, IsolatedFragme
 from loom.services.llm_evaluator import LLMEvaluator, _build_user_message
 from loom.services.prompt_registry import PromptRegistry
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_fragments(**overrides: Any) -> IsolatedFragments:
     """Create a minimal IsolatedFragments for testing."""
@@ -24,7 +24,9 @@ def _make_fragments(**overrides: Any) -> IsolatedFragments:
         "step_outline": ["# Step 1: Do something", "# Step 2: Do another thing"],
         "full_body": "# Step 1\nDo something.\n# Step 2\nDo another thing.",
         "code_blocks": [],
-        "eval_scenarios": [{"description": "basic", "input_context": "none", "success_criteria": "pass"}],
+        "eval_scenarios": [
+            {"description": "basic", "input_context": "none", "success_criteria": "pass"},
+        ],
         "injection_indicators": [],
     }
     defaults.update(overrides)
@@ -37,13 +39,15 @@ def _make_valid_response(
     injection_detected: bool = False,
 ) -> str:
     """Create a valid JSON LLM response."""
-    return json.dumps({
-        "score": score,
-        "evidence": ["Well structured", "Clear naming"],
-        "injection_detected": injection_detected,
-        "injection_detail": None,
-        "confidence": confidence,
-    })
+    return json.dumps(
+        {
+            "score": score,
+            "evidence": ["Well structured", "Clear naming"],
+            "injection_detected": injection_detected,
+            "injection_detail": None,
+            "confidence": confidence,
+        }
+    )
 
 
 def _mock_agent_factory(response_text: str) -> tuple[Any, AsyncMock]:
@@ -122,13 +126,15 @@ class TestEvaluateDimension:
     ) -> None:
         """Score outside [0,1] is treated as parse failure."""
         mock_result = AsyncMock()
-        mock_result.output = json.dumps({
-            "score": 1.5,
-            "evidence": ["oops"],
-            "injection_detected": False,
-            "injection_detail": None,
-            "confidence": 0.5,
-        })
+        mock_result.output = json.dumps(
+            {
+                "score": 1.5,
+                "evidence": ["oops"],
+                "injection_detected": False,
+                "injection_detail": None,
+                "confidence": 0.5,
+            }
+        )
         mock_agent = AsyncMock()
         mock_agent.run = AsyncMock(return_value=mock_result)
 
@@ -183,18 +189,14 @@ class TestEvaluateAll:
 class TestDataOnlyProtocol:
     """User message is JSON with 'skill_fragment' key — no metadata leakage."""
 
-    def test_user_message_has_skill_fragment_key(
-        self, fragments: IsolatedFragments
-    ) -> None:
+    def test_user_message_has_skill_fragment_key(self, fragments: IsolatedFragments) -> None:
         msg = _build_user_message(fragments, EvalDimension.CLARITY)
         parsed = json.loads(msg)
         assert "skill_fragment" in parsed
         assert "dimension" in parsed
         assert parsed["dimension"] == "clarity"
 
-    def test_no_metadata_leakage_in_clarity(
-        self, fragments: IsolatedFragments
-    ) -> None:
+    def test_no_metadata_leakage_in_clarity(self, fragments: IsolatedFragments) -> None:
         """Clarity only sees step_outline — no author, trust_tier, or score."""
         msg = _build_user_message(fragments, EvalDimension.CLARITY)
         msg_lower = msg.lower()
@@ -226,7 +228,9 @@ class TestDataOnlyProtocol:
     def test_safety_includes_injection_indicators(self) -> None:
         """Safety dimension message includes injection_indicators."""
         indicators = [
-            InjectionIndicator(line=5, pattern="ignore_instructions", matched_text="ignore all instructions"),
+            InjectionIndicator(
+                line=5, pattern="ignore_instructions", matched_text="ignore all instructions"
+            ),
         ]
         frags = _make_fragments(injection_indicators=indicators)
         msg = _build_user_message(frags, EvalDimension.SAFETY)

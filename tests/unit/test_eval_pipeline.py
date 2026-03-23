@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -144,15 +144,23 @@ def sandbox_runner() -> AsyncMock:
 
 
 @pytest.fixture
+def content_isolator() -> MagicMock:
+    mock = MagicMock()
+    mock.return_value = _make_fragments()
+    return mock
+
+
+@pytest.fixture
 def pipeline(
     static_analyser: MagicMock,
+    content_isolator: MagicMock,
     llm_evaluator: AsyncMock,
     score_aggregator: MagicMock,
 ) -> EvalPipelineService:
     """Pipeline without sandbox runner."""
     return EvalPipelineService(
         static_analyser=static_analyser,
-        content_isolator=None,  # module-level function used directly
+        content_isolator=content_isolator,
         llm_evaluator=llm_evaluator,
         score_aggregator=score_aggregator,
         sandbox_runner=None,
@@ -162,6 +170,7 @@ def pipeline(
 @pytest.fixture
 def pipeline_with_sandbox(
     static_analyser: MagicMock,
+    content_isolator: MagicMock,
     llm_evaluator: AsyncMock,
     score_aggregator: MagicMock,
     sandbox_runner: AsyncMock,
@@ -169,7 +178,7 @@ def pipeline_with_sandbox(
     """Pipeline with sandbox runner."""
     return EvalPipelineService(
         static_analyser=static_analyser,
-        content_isolator=None,
+        content_isolator=content_isolator,
         llm_evaluator=llm_evaluator,
         score_aggregator=score_aggregator,
         sandbox_runner=sandbox_runner,
@@ -183,23 +192,20 @@ def pipeline_with_sandbox(
 async def test_full_pipeline_passes(
     pipeline: EvalPipelineService,
     static_analyser: MagicMock,
+    content_isolator: MagicMock,
     llm_evaluator: AsyncMock,
     score_aggregator: MagicMock,
 ) -> None:
     skill = _make_skill()
 
-    with patch(
-        "loom.services.eval_pipeline.isolate_content",
-        return_value=_make_fragments(),
-    ) as mock_isolate:
-        result = await pipeline.evaluate(skill)
+    result, structural, raw_dims = await pipeline.evaluate(skill)
 
     assert result.passed is True
     assert result.composite_score == 0.8
 
     # All phases called.
     static_analyser.analyse.assert_called_once()
-    mock_isolate.assert_called_once()
+    content_isolator.assert_called_once()
     llm_evaluator.evaluate_all.assert_called_once()
     score_aggregator.aggregate.assert_called_once()
 
@@ -210,6 +216,7 @@ async def test_full_pipeline_passes(
 @pytest.mark.asyncio
 async def test_structural_failure_short_circuits(
     static_analyser: MagicMock,
+    content_isolator: MagicMock,
     llm_evaluator: AsyncMock,
     score_aggregator: MagicMock,
 ) -> None:
@@ -218,15 +225,16 @@ async def test_structural_failure_short_circuits(
 
     pipeline = EvalPipelineService(
         static_analyser=static_analyser,
-        content_isolator=None,
+        content_isolator=content_isolator,
         llm_evaluator=llm_evaluator,
         score_aggregator=score_aggregator,
     )
 
     skill = _make_skill()
-    result = await pipeline.evaluate(skill)
+    result, structural, raw_dims = await pipeline.evaluate(skill)
 
     assert result.passed is False
+    assert raw_dims == {}
 
     # Static analyser called.
     static_analyser.analyse.assert_called_once()
@@ -255,6 +263,10 @@ async def test_phases_called_in_correct_order(
         call_order.append("static_analyser")
         return _passing_structural()
 
+    def track_isolate(*args: Any, **kwargs: Any) -> IsolatedFragments:
+        call_order.append("content_isolator")
+        return _make_fragments()
+
     async def track_evaluate_all(*args: Any, **kwargs: Any) -> dict[str, list[DimensionResult]]:
         call_order.append("llm_evaluator")
         return _passing_dimensions()
@@ -267,25 +279,16 @@ async def test_phases_called_in_correct_order(
     llm_evaluator.evaluate_all.side_effect = track_evaluate_all
     score_aggregator.aggregate.side_effect = track_aggregate
 
+    mock_isolator = MagicMock(side_effect=track_isolate)
+
     pipeline = EvalPipelineService(
         static_analyser=static_analyser,
-        content_isolator=None,
+        content_isolator=mock_isolator,
         llm_evaluator=llm_evaluator,
         score_aggregator=score_aggregator,
     )
 
-    with patch(
-        "loom.services.eval_pipeline.isolate_content",
-        return_value=_make_fragments(),
-    ) as mock_isolate:
-
-        def track_isolate(*args: Any, **kwargs: Any) -> IsolatedFragments:
-            call_order.append("content_isolator")
-            return _make_fragments()
-
-        mock_isolate.side_effect = track_isolate
-
-        await pipeline.evaluate(_make_skill())
+    await pipeline.evaluate(_make_skill())
 
     assert call_order == [
         "static_analyser",
@@ -303,11 +306,7 @@ async def test_sandbox_runner_optional_none(
     pipeline: EvalPipelineService,
     score_aggregator: MagicMock,
 ) -> None:
-    with patch(
-        "loom.services.eval_pipeline.isolate_content",
-        return_value=_make_fragments(),
-    ):
-        await pipeline.evaluate(_make_skill())
+    await pipeline.evaluate(_make_skill())
 
     # Score aggregator called with sandbox=None.
     agg_call = score_aggregator.aggregate.call_args
@@ -323,11 +322,7 @@ async def test_sandbox_runner_called_when_provided(
     sandbox_runner: AsyncMock,
     score_aggregator: MagicMock,
 ) -> None:
-    with patch(
-        "loom.services.eval_pipeline.isolate_content",
-        return_value=_make_fragments(),
-    ):
-        await pipeline_with_sandbox.evaluate(_make_skill())
+    await pipeline_with_sandbox.evaluate(_make_skill())
 
     sandbox_runner.execute.assert_called_once()
 

@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from loom.models.common import EvalDimension
 from loom.models.eval import DimensionResult, IsolatedFragments
-from loom.services.prompt_registry import PromptRegistry
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from loom.services.prompt_registry import PromptRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +26,7 @@ logger = logging.getLogger(__name__)
 _DIMENSION_FRAGMENT_MAP: dict[EvalDimension, list[str]] = {
     EvalDimension.CLARITY: ["step_outline"],
     EvalDimension.COMPLETENESS: ["metadata", "step_outline"],
-    EvalDimension.SAFETY: ["full_body", "injection_indicators"],
+    EvalDimension.SAFETY: ["full_body"],
     EvalDimension.CORRECTNESS: ["eval_scenarios", "code_blocks"],
 }
 
@@ -61,9 +65,7 @@ def _build_user_message(
         "dimension": dimension.value,
     }
     if dimension == EvalDimension.SAFETY:
-        msg["injection_indicators"] = [
-            ind.model_dump() for ind in fragments.injection_indicators
-        ]
+        msg["injection_indicators"] = [ind.model_dump() for ind in fragments.injection_indicators]
     return json.dumps(msg)
 
 

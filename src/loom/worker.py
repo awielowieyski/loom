@@ -118,12 +118,28 @@ async def run_eval_job(ctx: dict[str, Any], skill_id: str, trigger: str) -> dict
                 score_aggregator=ctx["score_aggregator"],
             )
 
-            result = await pipeline.evaluate(skill)
+            result, structural, raw_dimensions = await pipeline.evaluate(skill)
+
+            # Persist individual dimension runs.
+            for dim, runs in raw_dimensions.items():
+                for idx, run in enumerate(runs):
+                    await eval_repo.create_dimension_run(
+                        eval_job_id=job.id,
+                        dimension=dim.value,
+                        run_index=idx,
+                        score=run.score,
+                        evidence=run.evidence,
+                        injection_detected=run.injection_detected,
+                        injection_detail=run.injection_detail,
+                        confidence=run.confidence,
+                    )
 
             completed_at = datetime.now(UTC)
             await eval_repo.update_eval_job(
                 job.id,
                 status="completed",
+                content_hash=result.content_hash,
+                structural_report=structural.model_dump(),
                 composite_score=result.composite_score,
                 dimension_scores=result.dimension_scores,
                 dimension_confidence=result.dimension_confidence,

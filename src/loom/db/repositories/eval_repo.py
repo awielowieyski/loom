@@ -83,6 +83,7 @@ class EvalRepo:
         job_id: uuid_mod.UUID,
         *,
         status: str | None = None,
+        content_hash: str | None = None,
         structural_report: dict[str, Any] | None = None,
         composite_score: float | None = None,
         dimension_scores: dict[str, float] | None = None,
@@ -103,6 +104,7 @@ class EvalRepo:
                 set_parts.append(f"{field} = ${len(params)}")
 
         _add("status", status)
+        _add("content_hash", content_hash)
         _add("structural_report", structural_report)
         _add("composite_score", composite_score)
         _add("dimension_scores", dimension_scores)

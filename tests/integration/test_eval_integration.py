@@ -19,6 +19,7 @@ from loom.models.common import (
 )
 from loom.models.eval import DimensionResult
 from loom.models.skill import Skill
+from loom.services.content_isolator import isolate as isolate_content
 from loom.services.eval_pipeline import EvalPipelineService
 from loom.services.score_aggregator import ScoreAggregator
 from loom.services.static_analyser import StaticAnalyser
@@ -117,13 +118,13 @@ async def test_full_pipeline_with_mock_llm() -> None:
 
     pipeline = EvalPipelineService(
         static_analyser=static_analyser,
-        content_isolator=None,  # module-level isolate used directly
+        content_isolator=isolate_content,
         llm_evaluator=llm_evaluator,
         score_aggregator=score_aggregator,
         sandbox_runner=None,
     )
 
-    result = await pipeline.evaluate(skill)
+    result, structural, raw_dims = await pipeline.evaluate(skill)
 
     assert result.passed is True
     assert result.composite_score > 0.5
@@ -155,13 +156,13 @@ async def test_pipeline_detects_injection() -> None:
 
     pipeline = EvalPipelineService(
         static_analyser=static_analyser,
-        content_isolator=None,
+        content_isolator=isolate_content,
         llm_evaluator=llm_evaluator,
         score_aggregator=score_aggregator,
         sandbox_runner=None,
     )
 
-    result = await pipeline.evaluate(skill)
+    result, structural, raw_dims = await pipeline.evaluate(skill)
 
     assert result.injection_flagged is True
 

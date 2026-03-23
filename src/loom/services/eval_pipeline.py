@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from loom.models.common import EvalDimension
 from loom.models.skill import SkillCreate
-from loom.services.content_isolator import isolate as isolate_content
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from loom.models.eval import (
         DimensionResult,
         EvalResult,
@@ -82,7 +83,7 @@ class EvalPipelineService:
     def __init__(
         self,
         static_analyser: StaticAnalyser,
-        content_isolator: Any,  # module-level isolate function is used directly
+        content_isolator: Callable[..., IsolatedFragments],
         llm_evaluator: LLMEvaluatorProtocol,
         score_aggregator: ScoreAggregator,
         sandbox_runner: SandboxRunnerProtocol | None = None,
@@ -93,7 +94,9 @@ class EvalPipelineService:
         self._score_aggregator = score_aggregator
         self._sandbox_runner = sandbox_runner
 
-    async def evaluate(self, skill: Skill) -> EvalResult:
+    async def evaluate(
+        self, skill: Skill
+    ) -> tuple[EvalResult, StructuralReport, dict[EvalDimension, list[DimensionResult]]]:
         """Run the full evaluation pipeline on a skill.
 
         Short-circuits on structural failure (skips LLM evaluation).
@@ -102,7 +105,8 @@ class EvalPipelineService:
             skill: The skill to evaluate.
 
         Returns:
-            Final EvalResult with composite score and pass/fail verdict.
+            Tuple of (EvalResult, StructuralReport, raw dimension runs).
+            Raw dimension runs are empty dict on structural failure.
         """
         # Convert Skill -> SkillCreate for static analysis.
         skill_create = _skill_to_skill_create(skill)
@@ -110,13 +114,14 @@ class EvalPipelineService:
         # Phase 1: Static analysis.
         structural: StructuralReport = self._static_analyser.analyse(skill_create)
         if not structural.passed:
-            return self._score_aggregator.aggregate(
+            result = self._score_aggregator.aggregate(
                 structural=structural,
                 dimensions={},
             )
+            return result, structural, {}
 
         # Phase 2: Content isolation.
-        fragments = isolate_content(skill, structural)
+        fragments = self._content_isolator(skill, structural)
 
         # Phase 3: LLM evaluation.
         raw_dimensions = await self._llm_evaluator.evaluate_all(fragments)
@@ -128,8 +133,9 @@ class EvalPipelineService:
             sandbox = await self._sandbox_runner.execute(fragments)
 
         # Phase 5: Score aggregation.
-        return self._score_aggregator.aggregate(
+        result = self._score_aggregator.aggregate(
             structural=structural,
             dimensions=dimensions,
             sandbox=sandbox,
         )
+        return result, structural, dimensions

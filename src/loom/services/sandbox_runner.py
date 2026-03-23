@@ -9,13 +9,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from loom.models.eval import SandboxResult
-
-if TYPE_CHECKING:
-    from loom.models.common import EvalScenario
-    from loom.models.eval import CodeBlock
+from loom.models.eval import IsolatedFragments, SandboxResult
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +38,7 @@ class SandboxRunner:
 
     async def execute(
         self,
-        eval_scenarios: list[EvalScenario],
-        code_blocks: list[CodeBlock],
+        fragments: IsolatedFragments,
     ) -> SandboxResult:
         """Run scenarios and code blocks in a sandboxed container.
 
@@ -53,8 +48,8 @@ class SandboxRunner:
         """
         task_input = json.dumps(
             {
-                "code_blocks": [cb.model_dump() for cb in code_blocks],
-                "eval_scenarios": [es.model_dump() for es in eval_scenarios],
+                "code_blocks": [cb.model_dump() for cb in fragments.code_blocks],
+                "eval_scenarios": fragments.eval_scenarios,
             }
         )
 
