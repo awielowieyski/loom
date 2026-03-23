@@ -2,7 +2,7 @@
 
 import asyncio
 import atexit
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
 
@@ -21,9 +21,15 @@ mcp: FastMCP = FastMCP(
         "should follow to complete the task.\n\n"
         "Tools:\n"
         "- resolve(task_description) — your primary entry point. Describe what you "
-        "need to do and get back the best matching skill with full instructions.\n"
-        "- search(query) — browse available skills by keyword with optional filters.\n"
+        "need to do and get back the best matching skill or capability with full "
+        "instructions. Use type='any' (default) to search both, or 'skill'/'capability' "
+        "to narrow.\n"
+        "- resolve_capability(task_description) — resolve a multi-step capability "
+        "(execution plan) specifically.\n"
+        "- search(query) — browse available skills and capabilities by keyword with "
+        "optional filters.\n"
         "- get_skill(slug) — fetch a specific skill by its identifier.\n"
+        "- get_capability(slug) — fetch a specific capability by its identifier.\n"
         "- list_categories() — explore what kinds of skills are available."
     ),
 )
@@ -51,8 +57,16 @@ async def _shutdown() -> None:
 
 
 @mcp.tool()
-async def resolve(task_description: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Resolve the best skill for a natural-language task description."""
+async def resolve(
+    task_description: str,
+    context: dict[str, Any] | None = None,
+    type: Literal["any", "skill", "capability"] = "any",
+) -> dict[str, Any]:
+    """Resolve the best skill for a natural-language task description.
+
+    Use type='any' (default) to search both skills and capabilities,
+    'skill' for skills only, or 'capability' for capabilities only.
+    """
     container = await _get_container()
 
     resolution_context: ResolutionContext | None = None
@@ -61,8 +75,38 @@ async def resolve(task_description: str, context: dict[str, Any] | None = None) 
 
     async with container.pool.acquire() as conn:
         skill_repo = container.skill_repo_factory(conn)
-        discovery = container.discovery_service_factory(skill_repo)
-        result = await discovery.resolve(task_description, context=resolution_context)
+
+        if type == "skill":
+            # Skill-only: use original DiscoveryService
+            discovery = container.discovery_service_factory(skill_repo)
+            skill_result = await discovery.resolve(task_description, context=resolution_context)
+            return skill_result.model_dump()
+
+        # "any" or "capability": use UnifiedResolver
+        capability_repo = container.capability_repo_factory(conn)
+        unified = container.unified_resolver_factory(skill_repo, capability_repo)
+        unified_result = await unified.resolve(
+            task_description, context=resolution_context, type_filter=type
+        )
+    return unified_result.model_dump()
+
+
+@mcp.tool()
+async def resolve_capability(
+    task_description: str, context: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Resolve the best capability (multi-step execution plan) for a task."""
+    container = await _get_container()
+
+    resolution_context: ResolutionContext | None = None
+    if context is not None:
+        resolution_context = ResolutionContext.model_validate(context)
+
+    async with container.pool.acquire() as conn:
+        capability_repo = container.capability_repo_factory(conn)
+        skill_repo = container.skill_repo_factory(conn)
+        cap_discovery = container.capability_discovery_factory(capability_repo, skill_repo)
+        result = await cap_discovery.resolve(task_description, context=resolution_context)
     return result.model_dump()
 
 
@@ -83,13 +127,34 @@ async def get_skill(slug: str, version: str | None = None) -> dict[str, Any]:
 
 
 @mcp.tool()
+async def get_capability(slug: str, version: str | None = None) -> dict[str, Any]:
+    """Retrieve a capability by slug and optional version."""
+    container = await _get_container()
+
+    async with container.pool.acquire() as conn:
+        capability_repo = container.capability_repo_factory(conn)
+        category_repo = container.category_repo_factory(conn)
+        cap_registry = container.capability_registry_factory(capability_repo, category_repo)
+        capability = await cap_registry.get_capability(slug)
+
+    if capability is None:
+        return {"error": "not_found", "message": f"Capability {slug!r} not found"}
+    return capability.model_dump()
+
+
+@mcp.tool()
 async def search(
     query: str,
     category: str | None = None,
     trust_tier: str | None = None,
     cost_budget: str | None = None,
+    type: Literal["any", "skill", "capability"] = "any",
 ) -> list[dict[str, Any]]:
-    """Search skills by query with optional filters."""
+    """Search skills by query with optional filters.
+
+    Use type='any' (default) to search both skills and capabilities,
+    'skill' for skills only, or 'capability' for capabilities only.
+    """
     container = await _get_container()
 
     tier: TrustTier | None = TrustTier(trust_tier) if trust_tier else None
@@ -97,9 +162,19 @@ async def search(
 
     async with container.pool.acquire() as conn:
         skill_repo = container.skill_repo_factory(conn)
-        discovery = container.discovery_service_factory(skill_repo)
-        results = await discovery.search(query=query, trust_tier=tier, cost_budget=budget)
-    return [s.model_dump() for s in results]
+
+        if type == "skill":
+            discovery = container.discovery_service_factory(skill_repo)
+            skill_results = await discovery.search(query=query, trust_tier=tier, cost_budget=budget)
+            return [s.model_dump() for s in skill_results]
+
+        # "any" or "capability": use UnifiedResolver
+        capability_repo = container.capability_repo_factory(conn)
+        unified = container.unified_resolver_factory(skill_repo, capability_repo)
+        unified_results = await unified.search(
+            query=query, trust_tier=tier, cost_budget=budget, type_filter=type
+        )
+    return [s.model_dump() for s in unified_results]
 
 
 @mcp.tool()
