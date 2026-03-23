@@ -2,102 +2,22 @@
 
 from __future__ import annotations
 
-import uuid
-from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock
+from typing import TYPE_CHECKING
 
 import pytest
 
 from loom.db.repositories.eval_repo import EvalRepo
-from loom.models.common import (
-    CostProfile,
-    DependencyDeclaration,
-    EvalDimension,
-    EvalScenario,
-    EvalSpec,
-    TrustTier,
-)
-from loom.models.eval import DimensionResult
-from loom.models.skill import Skill
+from loom.models.common import EvalDimension
 from loom.services.content_isolator import isolate as isolate_content
 from loom.services.eval_pipeline import EvalPipelineService
 from loom.services.score_aggregator import ScoreAggregator
 from loom.services.static_analyser import StaticAnalyser
+from tests.helpers import make_mock_llm_evaluator, make_test_skill
 
 if TYPE_CHECKING:
+    import uuid
+
     import asyncpg
-
-
-def _make_skill(**overrides: Any) -> Skill:
-    """Create a well-formed Skill for integration testing."""
-    defaults: dict[str, Any] = {
-        "id": uuid.uuid4(),
-        "slug": "integration-test-skill",
-        "name": "Integration Test Skill",
-        "description": "A well-formed skill for integration testing.",
-        "content": (
-            "# Step 1: Setup\n\n"
-            "Configure the environment with the required dependencies.\n\n"
-            "# Step 2: Execute\n\n"
-            "Run the main task using the provided context.\n\n"
-            "# Step 3: Verify\n\n"
-            "Check that the output matches the expected results.\n"
-        ),
-        "category_id": uuid.uuid4(),
-        "tags": ["integration", "test"],
-        "scope": "community",
-        "version": "1.0.0",
-        "author_id": uuid.uuid4(),
-        "trust_tier": TrustTier.EXPERIMENTAL,
-        "cost_profile": CostProfile.FREE,
-        "cost_drivers": [],
-        "estimated_duration": "fast",
-        "dependencies": DependencyDeclaration(),
-        "eval_spec": EvalSpec(
-            scenarios=[
-                EvalScenario(
-                    description="basic test",
-                    input_context="test context",
-                    success_criteria="should pass",
-                )
-            ]
-        ),
-    }
-    defaults.update(overrides)
-    return Skill(**defaults)
-
-
-def _mock_llm_evaluator(
-    *,
-    score: float = 0.85,
-    evidence: list[str] | None = None,
-    injection_detected: bool = False,
-    confidence: float = 0.90,
-) -> AsyncMock:
-    """Create a mock LLM evaluator that returns consistent dimension results."""
-    if evidence is None:
-        evidence = ["Good"]
-
-    async def _evaluate_all(fragments: Any, n_runs: int = 3) -> dict[str, list[DimensionResult]]:
-        results: dict[str, list[DimensionResult]] = {}
-        for dim in EvalDimension:
-            dim_results: list[DimensionResult] = []
-            for _ in range(n_runs):
-                dim_results.append(
-                    DimensionResult(
-                        dimension=dim,
-                        score=score,
-                        evidence=list(evidence),
-                        injection_detected=injection_detected,
-                        confidence=confidence,
-                    )
-                )
-            results[dim.value] = dim_results
-        return results
-
-    mock = AsyncMock()
-    mock.evaluate_all = AsyncMock(side_effect=_evaluate_all)
-    return mock
 
 
 # ---------------------------------------------------------------------------
@@ -108,11 +28,11 @@ def _mock_llm_evaluator(
 @pytest.mark.asyncio
 async def test_full_pipeline_with_mock_llm() -> None:
     """Real StaticAnalyser + ContentIsolator + ScoreAggregator, mocked LLM."""
-    skill = _make_skill()
+    skill = make_test_skill()
 
     static_analyser = StaticAnalyser()
     score_aggregator = ScoreAggregator()
-    llm_evaluator = _mock_llm_evaluator(
+    llm_evaluator = make_mock_llm_evaluator(
         score=0.85, evidence=["Good"], injection_detected=False, confidence=0.90
     )
 
@@ -140,7 +60,7 @@ async def test_full_pipeline_with_mock_llm() -> None:
 @pytest.mark.asyncio
 async def test_pipeline_detects_injection() -> None:
     """Skill with injection content and LLM returning injection_detected=True."""
-    skill = _make_skill(
+    skill = make_test_skill(
         content=(
             "# Step 1: Setup\n\n"
             "Configure the environment.\n\n"
@@ -152,7 +72,7 @@ async def test_pipeline_detects_injection() -> None:
 
     static_analyser = StaticAnalyser()
     score_aggregator = ScoreAggregator()
-    llm_evaluator = _mock_llm_evaluator(score=0.30, injection_detected=True, confidence=0.90)
+    llm_evaluator = make_mock_llm_evaluator(score=0.30, injection_detected=True, confidence=0.90)
 
     pipeline = EvalPipelineService(
         static_analyser=static_analyser,

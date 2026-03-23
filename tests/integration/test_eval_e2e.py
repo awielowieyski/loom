@@ -7,22 +7,11 @@ Requires LOOM_LLM__API_KEY or the api_key in loom.yaml/.env to be set.
 
 from __future__ import annotations
 
-import uuid
-from typing import Any
-
 import pytest
 from pydantic_ai import Agent
 
-from loom.models.common import (
-    CostProfile,
-    DependencyDeclaration,
-    EvalDimension,
-    EvalScenario,
-    EvalSpec,
-    TrustTier,
-)
+from loom.models.common import EvalDimension
 from loom.models.eval import DimensionResult
-from loom.models.skill import Skill
 from loom.providers.llm import create_llm_model
 from loom.services.content_isolator import isolate as isolate_content
 from loom.services.eval_pipeline import EvalPipelineService
@@ -31,46 +20,7 @@ from loom.services.prompt_registry import PromptRegistry
 from loom.services.score_aggregator import ScoreAggregator
 from loom.services.static_analyser import StaticAnalyser
 from loom.settings import LoomSettings
-
-
-def _make_skill(**overrides: Any) -> Skill:
-    """Create a well-formed Skill for e2e testing."""
-    defaults: dict[str, Any] = {
-        "id": uuid.uuid4(),
-        "slug": "e2e-test-skill",
-        "name": "E2E Test Skill",
-        "description": "A well-formed skill for end-to-end evaluation testing.",
-        "content": (
-            "# Step 1: Setup\n\n"
-            "Configure the environment with the required dependencies.\n\n"
-            "# Step 2: Execute\n\n"
-            "Run the main task using the provided context.\n\n"
-            "```python\nprint('hello world')\n```\n\n"
-            "# Step 3: Verify\n\n"
-            "Check that the output matches the expected results.\n"
-        ),
-        "category_id": uuid.uuid4(),
-        "tags": ["e2e", "test"],
-        "scope": "community",
-        "version": "1.0.0",
-        "author_id": uuid.uuid4(),
-        "trust_tier": TrustTier.EXPERIMENTAL,
-        "cost_profile": CostProfile.FREE,
-        "cost_drivers": [],
-        "estimated_duration": "fast",
-        "dependencies": DependencyDeclaration(),
-        "eval_spec": EvalSpec(
-            scenarios=[
-                EvalScenario(
-                    description="basic test scenario",
-                    input_context="test context for evaluation",
-                    success_criteria="should complete successfully",
-                )
-            ]
-        ),
-    }
-    defaults.update(overrides)
-    return Skill(**defaults)
+from tests.helpers import make_test_skill
 
 
 @pytest.mark.e2e
@@ -120,7 +70,7 @@ async def test_real_llm_eval_e2e() -> None:
     )
 
     # Step 9: Create a well-formed skill
-    skill = _make_skill()
+    skill = make_test_skill()
 
     # Step 10: Run the pipeline (REAL LLM calls)
     print("\n" + "=" * 70)
