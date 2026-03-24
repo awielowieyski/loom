@@ -815,3 +815,46 @@ M5i (Foundation + Resolve) ──→ M5ii (Explore + Inspect)
 - Unit tests: Vitest
 - Component tests: Vitest + Testing Library
 - Build verification: `vite build` succeeds with zero warnings
+
+---
+
+## 12. Future Vision: Federation & Execution Authority
+
+> This section captures architectural direction beyond M5. It is not in scope for this milestone but informs design decisions — particularly around auth, which deserves its own milestone.
+
+### 12.1 The Trajectory
+
+**Today (M1-M5)**: Loom is a **resolution layer** — agents describe a task, Loom returns instructions (markdown), the agent executes locally.
+
+**Future**: Loom becomes an **execution authority** — agents describe a task, Loom routes the request to the right downstream agent or MCP service, orchestrates execution, and returns results. Loom evolves from DNS-for-capabilities to a capability broker.
+
+### 12.2 What Federation Requires
+
+When Loom brokers execution rather than just returning instructions:
+
+- **Credential delegation** — Loom passes auth tokens to downstream MCP services on behalf of the requesting agent. The requesting agent never directly authenticates with the downstream service.
+- **Scope boundaries** — a request for "review my PR" must not grant access to "deploy to production" even if the same MCP service handles both. Scopes are per-resolution, not per-service.
+- **Trust chain** — the requesting agent trusts Loom, Loom trusts the downstream service, the service trusts the delegated credentials. Each link in the chain is independently verifiable.
+- **Audit trail** — who requested what, which service executed it, what credentials were used, what the outcome was. Full provenance for every federated execution.
+- **Billing/metering** — if Loom routes to a paid service, the cost must be attributed to the requesting org/user. This connects to the economic metadata already in the skill model (cost_profile, cost_drivers).
+
+### 12.3 Auth as Its Own Milestone (M6)
+
+Auth is not a feature bolted onto the UI — it's a cross-cutting concern that affects every layer:
+
+| Layer | Auth Impact |
+|-------|-------------|
+| **Web UI** | OAuth login, role-based view access, steward tools |
+| **API** | JWT tokens, API key management, per-org rate limits |
+| **MCP** | Agent identity, credential delegation to downstream services |
+| **Resolution** | Org-scoped `corp://` URIs, private skill visibility |
+| **Evaluation** | Author reputation, contribution history, account standing |
+| **Federation** | Trust chains, scope delegation, credential brokering |
+
+M6 should design auth with federation in mind from the start, even if federation itself is a later milestone. The auth model must support:
+- Individual identity (GitHub/Google OAuth)
+- Org membership and isolation
+- API key management for agent access
+- Role hierarchy (viewer → contributor → steward → admin)
+- Scope-based permissions (per-skill, per-category, per-org)
+- Credential delegation primitives (for future federation)
