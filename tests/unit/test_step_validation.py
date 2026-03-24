@@ -61,15 +61,15 @@ class TestValidateSteps:
         assert len(warnings) == 2
         assert all("corp://" in w for w in warnings)
 
-    def test_custom_scheme_passes(self) -> None:
-        """Non-standard schemes (e.g. custom://) pass structural validation.
+    def test_custom_scheme_rejected(self) -> None:
+        """Non-standard schemes (e.g. custom://) are rejected at the model level.
 
-        The step validator only enforces the presence of ://, not specific schemes.
-        Scheme validation is handled at resolution time.
+        Only loom:// and corp:// are valid URI schemes.
         """
-        steps = [_make_step("custom://my-thing")]
-        warnings = CapabilityRegistryService._validate_steps(steps)
-        assert warnings == []
+        import pytest
+
+        with pytest.raises(Exception, match="unsupported URI scheme"):
+            _make_step("custom://my-thing")
 
     def test_step_index_in_warning(self) -> None:
         """Warning messages include the step index for debugging."""

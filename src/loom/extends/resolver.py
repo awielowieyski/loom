@@ -111,6 +111,12 @@ class ExtendsResolver:
         scheme, rest = uri.split("://", 1)
         source = scheme.lower()
 
+        if source not in VALID_URI_SCHEMES:
+            raise ValueError(
+                f"Unsupported URI scheme {source!r} in extends URI {uri!r}. "
+                f"Supported: {', '.join(sorted(VALID_URI_SCHEMES))}"
+            )
+
         if "@" in rest:
             slug, version = rest.rsplit("@", 1)
         else:
@@ -246,17 +252,15 @@ class ExtendsResolver:
             chain = " -> ".join(visited) + " -> " + uri
             raise ValueError(f"Circular extends chain detected: {chain}. Remove the cycle.")
 
-        visited.add(uri)
-
         layer = lookup.get(uri)
         if layer is None:
             raise ValueError(f"Extends target not found: {uri!r}")
 
         parent_uri = layer.get("extends")
         if parent_uri and isinstance(parent_uri, str):
-            # Resolve parent first (bottom-up)
+            # Resolve parent first (bottom-up); copy-on-recurse for diamond DAG safety
             parent_layers = self.resolve_extends_chain(
-                parent_uri, lookup, visited=visited, depth=depth + 1
+                parent_uri, lookup, visited=visited | {uri}, depth=depth + 1
             )
             return [*parent_layers, layer]
 

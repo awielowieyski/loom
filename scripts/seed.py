@@ -270,7 +270,7 @@ async def seed() -> None:
     else:
         print("No embedding API key found — skills will be created without embeddings.")
 
-    yaml_files = sorted(SEEDS_DIR.rglob("*.yaml"))
+    yaml_files = sorted(f for f in SEEDS_DIR.rglob("*.yaml") if "capabilities" not in f.parts)
     print(f"\nFound {len(yaml_files)} seed files in {SEEDS_DIR}\n")
 
     created = 0
@@ -396,7 +396,11 @@ async def seed() -> None:
                 cap_skipped += 1
                 continue
 
-            cat_slug = CAP_CATEGORIES.get(slug, "development")
+            cat_slug = CAP_CATEGORIES.get(slug)
+            if cat_slug is None:
+                print(f"  [error] slug {slug!r} not in CAP_CATEGORIES mapping — skipped")
+                cap_errors += 1
+                continue
             await ensure_category_hierarchy(category_repo2, cat_slug)
 
             # Parse steps

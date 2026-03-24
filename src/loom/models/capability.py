@@ -1,10 +1,12 @@
 """Capability domain models."""
 
+import re
 import uuid as uuid_mod
 from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from loom.extends.resolver import VALID_URI_SCHEMES
 from loom.models.common import (
     CostProfile,
     DependencyDeclaration,
@@ -31,6 +33,12 @@ class CapabilityStep(BaseModel):
         if "://" not in v:
             raise ValueError(
                 f"skill_ref must include a URI scheme prefix (e.g. 'loom://slug'), got: {v!r}"
+            )
+        scheme = v.split("://", 1)[0].lower()
+        if scheme not in VALID_URI_SCHEMES:
+            raise ValueError(
+                f"skill_ref has unsupported URI scheme {scheme!r}, "
+                f"must be one of: {sorted(VALID_URI_SCHEMES)}"
             )
         return v
 
@@ -62,6 +70,31 @@ class CapabilityCreate(BaseModel):
     estimated_duration: EstimatedDuration | str = EstimatedDuration.SLOW
     eval_spec: EvalSpec = EvalSpec()
     extends: str | None = None
+
+    @field_validator("slug")
+    @classmethod
+    def validate_slug_format(cls, v: str) -> str:
+        if not re.match(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", v):
+            raise ValueError(f"slug must be lowercase alphanumeric with hyphens, got: {v!r}")
+        return v
+
+    @field_validator("extends")
+    @classmethod
+    def validate_extends_uri(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if "://" not in v:
+            raise ValueError(f"extends must include a URI scheme (e.g. 'loom://slug'), got: {v!r}")
+        scheme = v.split("://", 1)[0].lower()
+        if scheme not in VALID_URI_SCHEMES:
+            raise ValueError(
+                f"extends has unsupported URI scheme {scheme!r}, "
+                f"must be one of: {sorted(VALID_URI_SCHEMES)}"
+            )
+        slug_part = v.split("://", 1)[1].split("@")[0]
+        if not slug_part:
+            raise ValueError(f"extends URI has an empty slug: {v!r}")
+        return v
 
 
 class Capability(BaseModel):
@@ -138,6 +171,24 @@ class CapabilityUpdate(BaseModel):
     eval_spec: EvalSpec | None = None
     extends: str | None = None
     changelog: str | None = None
+
+    @field_validator("extends")
+    @classmethod
+    def validate_extends_uri(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if "://" not in v:
+            raise ValueError(f"extends must include a URI scheme (e.g. 'loom://slug'), got: {v!r}")
+        scheme = v.split("://", 1)[0].lower()
+        if scheme not in VALID_URI_SCHEMES:
+            raise ValueError(
+                f"extends has unsupported URI scheme {scheme!r}, "
+                f"must be one of: {sorted(VALID_URI_SCHEMES)}"
+            )
+        slug_part = v.split("://", 1)[1].split("@")[0]
+        if not slug_part:
+            raise ValueError(f"extends URI has an empty slug: {v!r}")
+        return v
 
 
 class CapabilityVersion(BaseModel):
