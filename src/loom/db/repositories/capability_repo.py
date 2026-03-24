@@ -5,6 +5,7 @@ from typing import Any
 
 import asyncpg
 import numpy as np
+from asyncpg.exceptions import UniqueViolationError
 
 from loom.models.capability import (
     Capability,
@@ -62,7 +63,6 @@ def _row_to_capability(row: asyncpg.Record) -> Capability:
 
 def _row_to_summary(row: asyncpg.Record) -> CapabilitySummary:
     d = dict(row)
-    steps = d["steps"]
     return CapabilitySummary(
         id=d["id"],
         slug=d["slug"],
@@ -74,7 +74,7 @@ def _row_to_summary(row: asyncpg.Record) -> CapabilitySummary:
         trust_tier=d["trust_tier"],
         cost_profile=d["cost_profile"],
         estimated_duration=d["estimated_duration"],
-        step_count=len(steps) if isinstance(steps, list) else 0,
+        step_count=d.get("step_count", 0),
     )
 
 
@@ -120,68 +120,73 @@ class CapabilityRepo:
         deps_dict = deps.model_dump()
         eval_dict = espec.model_dump()
 
-        row = await self._conn.fetchrow(
-            f"""
-            INSERT INTO capabilities (
-                slug, name, description, category_id, tags, scope, version,
-                author_id, trust_tier, steps, preconditions, expected_outcome,
-                data_flow, dependencies, cost_profile, cost_drivers,
-                estimated_duration, eval_spec, extends, embedding
-            ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7,
-                $8, $9, $10, $11, $12,
-                $13, $14, $15, $16,
-                $17, $18, $19, $20
-            )
-            RETURNING {_CAPABILITY_COLUMNS}
-            """,
-            slug,
-            name,
-            description,
-            category_id,
-            tags,
-            scope.value,
-            version,
-            author_id,
-            trust_tier.value,
-            steps_json,
-            preconditions,
-            expected_outcome,
-            flow_json,
-            deps_dict,
-            cost_profile.value,
-            cost_drivers,
-            estimated_duration,
-            eval_dict,
-            extends,
-            _to_vector(embedding),
-        )
+        try:
+            async with self._conn.transaction():
+                row = await self._conn.fetchrow(
+                    f"""
+                    INSERT INTO capabilities (
+                        slug, name, description, category_id, tags, scope, version,
+                        author_id, trust_tier, steps, preconditions, expected_outcome,
+                        data_flow, dependencies, cost_profile, cost_drivers,
+                        estimated_duration, eval_spec, extends, embedding
+                    ) VALUES (
+                        $1, $2, $3, $4, $5, $6, $7,
+                        $8, $9, $10, $11, $12,
+                        $13, $14, $15, $16,
+                        $17, $18, $19, $20
+                    )
+                    RETURNING {_CAPABILITY_COLUMNS}
+                    """,
+                    slug,
+                    name,
+                    description,
+                    category_id,
+                    tags,
+                    scope.value,
+                    version,
+                    author_id,
+                    trust_tier.value,
+                    steps_json,
+                    preconditions,
+                    expected_outcome,
+                    flow_json,
+                    deps_dict,
+                    cost_profile.value,
+                    cost_drivers,
+                    estimated_duration,
+                    eval_dict,
+                    extends,
+                    _to_vector(embedding),
+                )
 
-        capability = _row_to_capability(row)
+                capability = _row_to_capability(row)
 
-        # Insert initial version record
-        await self._conn.execute(
-            """
-            INSERT INTO capability_versions (
-                capability_id, version, steps, preconditions, expected_outcome,
-                data_flow, dependencies, cost_profile, cost_drivers,
-                estimated_duration, eval_spec, extends, author_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            """,
-            capability.id,
-            version,
-            steps_json,
-            preconditions,
-            expected_outcome,
-            flow_json,
-            deps_dict,
-            cost_profile.value,
-            cost_drivers,
-            estimated_duration,
-            eval_dict,
-            extends,
-            author_id,
-        )
+                # Insert initial version record
+                await self._conn.execute(
+                    """
+                    INSERT INTO capability_versions (
+                        capability_id, version, steps, preconditions, expected_outcome,
+                        data_flow, dependencies, cost_profile, cost_drivers,
+                        estimated_duration, eval_spec, extends, author_id
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                    """,
+                    capability.id,
+                    version,
+                    steps_json,
+                    preconditions,
+                    expected_outcome,
+                    flow_json,
+                    deps_dict,
+                    cost_profile.value,
+                    cost_drivers,
+                    estimated_duration,
+                    eval_dict,
+                    extends,
+                    author_id,
+                )
+
+        except UniqueViolationError:
+            raise ValueError(f"Version '{version}' already exists for this capability") from None
 
         return capability
 
@@ -224,6 +229,7 @@ class CapabilityRepo:
         eval_spec: EvalSpec | None = None,
         extends: str | None = None,
         changelog: str | None = None,
+        fields_set: set[str] | None = None,
     ) -> Capability | None:
         """Update a capability and create a version record."""
         set_parts: list[str] = ["version = $2"]
@@ -251,47 +257,58 @@ class CapabilityRepo:
         _add("cost_drivers", cost_drivers)
         _add("estimated_duration", estimated_duration)
         _add("eval_spec", eval_spec.model_dump() if eval_spec else None)
-        _add("extends", extends)
 
-        row = await self._conn.fetchrow(
-            f"""
-            UPDATE capabilities SET {", ".join(set_parts)}, updated_at = now()
-            WHERE id = $1
-            RETURNING {_CAPABILITY_COLUMNS}
-            """,  # noqa: S608
-            *params,
-        )
-        if row is None:
-            return None
+        # For extends: support explicit clearing to NULL
+        if extends is not None:
+            _add("extends", extends)
+        elif fields_set is not None and "extends" in fields_set:
+            params.append(None)
+            set_parts.append(f"extends = ${len(params)}")
 
-        updated = _row_to_capability(row)
+        try:
+            async with self._conn.transaction():
+                row = await self._conn.fetchrow(
+                    f"""
+                    UPDATE capabilities SET {", ".join(set_parts)}, updated_at = now()
+                    WHERE id = $1
+                    RETURNING {_CAPABILITY_COLUMNS}
+                    """,  # noqa: S608
+                    *params,
+                )
+                if row is None:
+                    return None
 
-        # Create version record from the updated state
-        await self._conn.execute(
-            """
-            INSERT INTO capability_versions (
-                capability_id, version, steps, preconditions, expected_outcome,
-                data_flow, dependencies, cost_profile, cost_drivers,
-                estimated_duration, eval_spec, extends, author_id, changelog
-            ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
-            )
-            """,
-            updated.id,
-            version,
-            [s.model_dump() for s in updated.steps],
-            updated.preconditions,
-            updated.expected_outcome,
-            [e.model_dump() for e in updated.data_flow],
-            updated.dependencies.model_dump(),
-            updated.cost_profile.value,
-            updated.cost_drivers,
-            updated.estimated_duration,
-            updated.eval_spec.model_dump(),
-            updated.extends,
-            author_id,
-            changelog,
-        )
+                updated = _row_to_capability(row)
+
+                # Create version record from the updated state
+                await self._conn.execute(
+                    """
+                    INSERT INTO capability_versions (
+                        capability_id, version, steps, preconditions, expected_outcome,
+                        data_flow, dependencies, cost_profile, cost_drivers,
+                        estimated_duration, eval_spec, extends, author_id, changelog
+                    ) VALUES (
+                        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+                    )
+                    """,
+                    updated.id,
+                    version,
+                    [s.model_dump() for s in updated.steps],
+                    updated.preconditions,
+                    updated.expected_outcome,
+                    [e.model_dump() for e in updated.data_flow],
+                    updated.dependencies.model_dump(),
+                    updated.cost_profile.value,
+                    updated.cost_drivers,
+                    updated.estimated_duration,
+                    updated.eval_spec.model_dump(),
+                    updated.extends,
+                    author_id,
+                    changelog,
+                )
+
+        except UniqueViolationError:
+            raise ValueError(f"Version '{version}' already exists for this capability") from None
 
         return updated
 
@@ -299,6 +316,8 @@ class CapabilityRepo:
         self,
         category_id: uuid_mod.UUID | None = None,
         trust_tier: TrustTier | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> list[CapabilitySummary]:
         """Return capability summaries, optionally filtered."""
         conditions: list[str] = []
@@ -313,11 +332,17 @@ class CapabilityRepo:
             conditions.append(f"trust_tier = ${len(params)}")
 
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.append(limit)
+        limit_param = f"${len(params)}"
+        params.append(offset)
+        offset_param = f"${len(params)}"
         rows = await self._conn.fetch(
             f"""
             SELECT id, slug, name, description, category_id, tags, version,
-                   trust_tier, cost_profile, estimated_duration, steps
+                   trust_tier, cost_profile, estimated_duration,
+                   jsonb_array_length(steps) AS step_count
             FROM capabilities {where} ORDER BY name
+            LIMIT {limit_param} OFFSET {offset_param}
             """,  # noqa: S608
             *params,
         )
@@ -347,7 +372,8 @@ class CapabilityRepo:
         rows = await self._conn.fetch(
             f"""
             SELECT id, slug, name, description, category_id, tags, version,
-                   trust_tier, cost_profile, estimated_duration, steps
+                   trust_tier, cost_profile, estimated_duration,
+                   jsonb_array_length(steps) AS step_count
             FROM capabilities {where}
             ORDER BY embedding <=> $1
             LIMIT ${len(params)}

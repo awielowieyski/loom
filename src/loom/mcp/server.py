@@ -9,7 +9,7 @@ from mcp.server.fastmcp import FastMCP
 
 from loom.models.capability import CapabilitySummary
 from loom.models.common import CostProfile, TrustTier, UsageOutcome
-from loom.models.resolution import ResolutionContext
+from loom.models.resolution import ResolutionContext, ResolutionError
 from loom.models.usage import UsageReportCreate
 from loom.services.container import ServiceContainer, close_container, create_container
 
@@ -38,12 +38,17 @@ mcp: FastMCP = FastMCP(
 )
 
 _container: ServiceContainer | None = None
+_container_lock = asyncio.Lock()
 
 
 async def _get_container() -> ServiceContainer:
     """Lazy-initialise the shared container on first call."""
     global _container  # noqa: PLW0603
-    if _container is None:
+    if _container is not None:
+        return _container
+    async with _container_lock:
+        if _container is not None:
+            return _container
         from loom.settings import LoomSettings
 
         settings = LoomSettings()
@@ -83,6 +88,8 @@ async def resolve(
             # Skill-only: use original DiscoveryService
             discovery = container.discovery_service_factory(skill_repo)
             skill_result = await discovery.resolve(task_description, context=resolution_context)
+            if isinstance(skill_result, ResolutionError):
+                return {"error": skill_result.error, "message": skill_result.message}
             result = skill_result.model_dump()
         else:
             # "any" or "capability": use UnifiedResolver
@@ -91,6 +98,8 @@ async def resolve(
             unified_result = await unified.resolve(
                 task_description, context=resolution_context, type_filter=type
             )
+            if isinstance(unified_result, ResolutionError):
+                return {"error": unified_result.error, "message": unified_result.message}
             result = unified_result.model_dump()
 
         # Enrich with M4 fields if a skill was resolved
@@ -169,6 +178,8 @@ async def resolve_capability(
         skill_repo = container.skill_repo_factory(conn)
         cap_discovery = container.capability_discovery_factory(capability_repo, skill_repo)
         result = await cap_discovery.resolve(task_description, context=resolution_context)
+    if isinstance(result, ResolutionError):
+        return {"error": result.error, "message": result.message}
     return result.model_dump()
 
 

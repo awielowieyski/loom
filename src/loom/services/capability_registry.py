@@ -163,7 +163,7 @@ class CapabilityRegistryService:
         cost_drivers = data.cost_drivers if data.cost_drivers is not None else existing.cost_drivers
         estimated_duration = _coerce_duration(data.estimated_duration, existing.estimated_duration)
         eval_spec = data.eval_spec if data.eval_spec is not None else existing.eval_spec
-        extends = data.extends if data.extends is not None else existing.extends
+        extends = data.extends if "extends" in data.model_fields_set else existing.extends
 
         # Validate steps if changed
         if data.steps is not None:
@@ -194,6 +194,7 @@ class CapabilityRegistryService:
             eval_spec=eval_spec,
             extends=extends,
             changelog=data.changelog,
+            fields_set=data.model_fields_set,
         )
         if updated is None:
             raise ValueError(f"Update failed for capability: {slug!r}")
@@ -259,6 +260,11 @@ class CapabilityRegistryService:
             ref = step.skill_ref
             if "://" in ref:
                 slug = ref.split("://", 1)[1]
+                if slug in slug_to_index:
+                    errors.append(
+                        f"Duplicate step slug {slug!r} at indices {slug_to_index[slug]} and {idx}; "
+                        f"data flow edges cannot distinguish between them"
+                    )
                 slug_to_index[slug] = idx
 
         for edge_idx, edge in enumerate(data_flow):
