@@ -35,10 +35,10 @@ M1-M4 built a powerful backend: constraint-aware resolution, quality evaluation,
 | Build | Vite | Fast HMR, ESM-native, minimal config |
 | Styling | Tailwind CSS + shadcn/ui | Utility-first CSS with pre-built accessible components |
 | Flow diagrams | React Flow | Purpose-built for node/edge diagrams; capabilities as pipelines |
-| Data viz | D3.js / visx | Semantic landscape map, skill fingerprint polygons |
+| Data viz | D3.js (semantic map, fingerprint SVG) + Recharts (Govern charts) | Semantic landscape map, skill fingerprint polygons, governance charts |
 | Animation | Framer Motion | Layout animations, page transitions, micro-interactions |
 | Data fetching | TanStack Query v5 | Cache management, background refetching, optimistic updates |
-| Routing | TanStack Router | Type-safe routing, search param validation, code splitting |
+| Routing | TanStack Router + @tanstack/router-plugin | Type-safe file-based routing, search param validation, code splitting |
 | Deployment | Vite SPA | Static build, served from CDN or same-origin as API |
 
 The frontend is a standalone Vite SPA that talks to the existing FastAPI backend. No server-side rendering — the API already provides all data. The SPA is deployed independently from the backend.
@@ -171,7 +171,7 @@ The Inspect View provides deep detail on a single skill or capability. Reached b
 
 ### 3.4 Govern View (Dashboard + Queue)
 
-The Govern View is restricted to authenticated users with the `steward` role. It provides registry health observability and human review workflows.
+The Govern View provides registry health observability and human review workflows. In M5, this view is publicly accessible without authentication. Role-based access control (`steward` role gating) is deferred to M6.
 
 #### Registry Health Dashboard
 
@@ -237,7 +237,7 @@ A sidebar component visible across all views (collapsible on smaller screens). S
 - Capabilities created or updated
 - High-impact usage events (e.g., a skill crossing the 80% success threshold)
 
-Data source: polling `GET /api/v1/skills?sort=created_at&limit=20` and related endpoints. Future enhancement: WebSocket for real-time push.
+Data source: `GET /api/v1/activity/feed` — a new endpoint that aggregates registry events (submissions, promotions, deprecations, amendments, capability changes) into a unified chronological feed. Polled every 30 seconds. Future enhancement: WebSocket for real-time push.
 
 ---
 
@@ -287,7 +287,7 @@ The existing M1-M4 API surface covers the majority of data needs:
 
 | Endpoint | Used By |
 |----------|---------|
-| `POST /api/v1/skills/resolve` | Resolve View (live resolution) |
+| `POST /api/v1/skills/resolve` | Resolve View (skill-only resolution) |
 | `GET /api/v1/skills` | Explore View (skill listing) |
 | `GET /api/v1/skills/search` | Resolve/Explore (search) |
 | `GET /api/v1/skills/{slug}` | Inspect View (skill detail) |
@@ -302,13 +302,108 @@ The existing M1-M4 API surface covers the majority of data needs:
 | `GET /api/v1/capabilities` | Explore View (capability listing) |
 | `GET /api/v1/capabilities/{slug}` | Inspect View (capability detail) |
 | `GET /api/v1/capabilities/search` | Explore/Resolve (capability search) |
-| `POST /api/v1/capabilities/resolve` | Resolve View (capability resolution) |
+| `POST /api/v1/capabilities/resolve` | Resolve View (capability-only resolution) |
 | `GET /api/v1/categories` | Explore View (category labels) |
 | `POST /api/v1/usage/report` | Contribution (usage reporting) |
 
 ### 6.2 New Endpoints Required
 
 These endpoints provide data that does not exist in M1-M4 and must be implemented as part of M5:
+
+#### `POST /api/v1/resolve`
+
+Unified resolution endpoint used by the Resolve View's hero search bar. Wraps the existing `UnifiedResolver` service, which already exists but has no API route.
+
+```json
+// Request
+{
+  "task_description": "review my pull request for security issues",
+  "context": {
+    "available_tools": ["git", "filesystem"],
+    "trust_floor": "community",
+    "cost_budget": "low"
+  },
+  "type": "any"  // "any" | "skill" | "capability"
+}
+
+// Response — ResolvedResult (union of ResolvedSkill | ResolvedCapability)
+{
+  "type": "skill",
+  "result": { /* ResolvedSkill */ },
+  "alternatives": [
+    {
+      "skill": { /* SkillSummary */ },
+      "match_score": 0.72,
+      "rejection_reason": "Not selected: narrower scope — only covers code style, not security"
+    }
+  ],
+  "selection_rationale": ["..."]
+}
+```
+
+The `type` filter allows the Resolve View's context toggles to constrain resolution to skills only, capabilities only, or either.
+
+#### `GET /api/v1/activity/feed`
+
+Aggregated registry activity feed for the Living Feed sidebar. Returns recent events across all event types in chronological order.
+
+```json
+{
+  "events": [
+    {
+      "id": "uuid",
+      "event_type": "skill_submitted",
+      "timestamp": "2026-03-24T10:00:00Z",
+      "skill_slug": "review-security",
+      "skill_name": "Security Code Review",
+      "detail": "New skill submitted",
+      "trust_tier": "experimental"
+    },
+    {
+      "id": "uuid",
+      "event_type": "trust_promoted",
+      "timestamp": "2026-03-24T09:30:00Z",
+      "skill_slug": "commit-ai-message",
+      "skill_name": "AI Commit Message",
+      "detail": "experimental → community",
+      "from_tier": "experimental",
+      "to_tier": "community"
+    },
+    {
+      "id": "uuid",
+      "event_type": "skill_deprecated",
+      "timestamp": "2026-03-24T09:00:00Z",
+      "skill_slug": "old-review",
+      "skill_name": "Old Review",
+      "detail": "Deprecated in favor of review-pull-request",
+      "successor_slug": "review-pull-request"
+    }
+  ]
+}
+```
+
+Event types: `skill_submitted`, `capability_submitted`, `trust_promoted`, `trust_demoted`, `skill_deprecated`, `amendment_merged`, `amendment_rejected`, `eval_completed`.
+
+Query params: `?limit={n}` (default 20), `?since={iso_timestamp}` (for incremental polling).
+
+Aggregates data from: `skills` (created_at), `capabilities` (created_at), `trust_audit_log`, `eval_jobs`, and skill version history.
+
+### 6.3 Backend Enhancements Required
+
+These changes improve existing M1-M4 functionality to support M5 UX requirements:
+
+#### Alternative Rejection Rationale
+
+The existing `Alternative` model has a `tradeoff` field that is currently populated with a static string (`"Alternative skill"`). The Resolve View requires meaningful per-alternative rejection reasons.
+
+Enhancement: update `DiscoveryService.resolve()` and `CapabilityDiscoveryService.resolve()` to populate `tradeoff` with contextual reasons based on:
+- Match score gap vs. winner (e.g., "Lower semantic relevance to task")
+- Missing dependencies (e.g., "Missing required dependency: git")
+- Cost difference (e.g., "Cost exceeds budget")
+- Scope mismatch (e.g., "Narrower scope — covers only X, not Y")
+- Trust tier gap (e.g., "Experimental tier — winner is community")
+
+### 6.4 Data Endpoints
 
 #### `GET /api/v1/embeddings/map`
 
@@ -422,7 +517,7 @@ Items needing human review for the Govern View review queue.
 
 Query params: `?reason={injection_flag|low_confidence|mixed_amendment}&limit={n}&offset={n}`
 
-Requires `steward` role.
+Unprotected in M5. Will require `steward` role in M6.
 
 #### `POST /api/v1/governance/review`
 
@@ -436,7 +531,7 @@ Submit a review decision on a queued item.
 }
 ```
 
-Returns 200 with the updated item. Requires `steward` role.
+Returns 200 with the updated item. Unprotected in M5. Will require `steward` role in M6.
 
 #### `GET /api/v1/skills/{slug}/timeline`
 
@@ -485,7 +580,7 @@ web/
         ResolutionHistory.tsx     — localStorage-backed recent queries
       explore/
         ExploreView.tsx           — page container
-        SemanticMap.tsx            — D3/visx canvas with pan/zoom
+        SemanticMap.tsx            — D3 canvas with pan/zoom
         ClusterLabel.tsx          — auto-positioned category labels
         SkillNode.tsx             — individual node renderer with fingerprint
         CapabilityEdge.tsx        — lines connecting capability to constituent skills
@@ -504,7 +599,7 @@ web/
           StepNode.tsx            — individual step node (expandable)
           DataFlowEdge.tsx        — data flow edge with classification label
       govern/
-        GovernView.tsx            — page container (auth-gated)
+        GovernView.tsx            — page container (public in M5, auth-gated in M6)
         HealthDashboard.tsx       — skill counts, coverage, staleness
         EvalTrends.tsx            — composite score distribution over time
         UsageHeatmap.tsx          — resolution frequency by category x time
@@ -529,82 +624,44 @@ web/
       useEmbeddingMap.ts         — fetch and cache 2D projections
       useStats.ts                — governance dashboard stats
       useGovernanceQueue.ts      — review queue with pagination
-      useAuth.ts                 — authentication state and role checks
+      useActivityFeed.ts         — activity feed polling
     api/
-      client.ts                  — base fetch wrapper with auth headers
+      client.ts                  — base fetch wrapper
       skills.ts                  — skill endpoint functions
       capabilities.ts            — capability endpoint functions
-      resolve.ts                 — resolution endpoint functions
+      resolve.ts                 — unified resolution endpoint functions
       stats.ts                   — stats/governance endpoint functions
-      auth.ts                    — OAuth flow functions
+      activity.ts                — activity feed endpoint functions
     routes/
       index.tsx                  — TanStack Router route tree
       resolve.tsx                — / (Resolve View)
       explore.tsx                — /explore (Explore View)
       inspect.skill.tsx          — /skills/$slug (Skill Inspect)
       inspect.capability.tsx     — /capabilities/$slug (Capability Inspect)
-      govern.tsx                 — /govern (Govern View, auth-gated)
+      govern.tsx                 — /govern (Govern View)
     lib/
       fingerprint.ts             — cardinal spline math for fingerprint rendering
       embedding-map.ts           — D3 scale/zoom utilities for semantic landscape
       format.ts                  — score formatting, date formatting, etc.
     types/
       api.ts                     — TypeScript types mirroring API response shapes
-      auth.ts                    — user, role, session types
 ```
 
 ---
 
-## 8. Authentication
+## 8. Authentication (M6 Preview)
 
-### 8.1 OAuth Providers
+> **Out of scope for M5.** Authentication, authorization, and role-based access control are deferred to M6. All M5 views and endpoints are publicly accessible without authentication. This section is retained as a preview of M6 requirements to inform design decisions.
+>
+> See [Implementation Milestones](implementation-milestones.md) for the full M6 scope: OAuth login, JWT sessions, role-based access, API key management, and the foundation for M8 federation credential delegation.
 
-- **GitHub**: primary provider for developer contributors
-- **Google**: secondary provider for broader access
+### 8.1 M6 Auth Summary
 
-OAuth flow: standard authorization code flow. The SPA redirects to the provider, receives a code on callback, exchanges it for a JWT via the backend.
-
-### 8.2 Backend Auth Endpoints (New)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/v1/auth/github` | Redirect to GitHub OAuth |
-| `GET` | `/api/v1/auth/github/callback` | Exchange code for JWT |
-| `GET` | `/api/v1/auth/google` | Redirect to Google OAuth |
-| `GET` | `/api/v1/auth/google/callback` | Exchange code for JWT |
-| `GET` | `/api/v1/auth/me` | Current user profile + role |
-| `POST` | `/api/v1/auth/logout` | Invalidate session |
-
-### 8.3 JWT Tokens
-
-- Short-lived access tokens (15 minutes) stored in memory
-- Refresh tokens (7 days) stored in httpOnly cookies
-- Token refresh handled transparently by the API client layer
-
-### 8.4 Roles
-
-| Role | Permissions |
-|------|------------|
-| `viewer` | Browse, resolve, search — all read operations |
-| `contributor` | All viewer permissions + submit skills, submit amendments, report usage |
-| `steward` | All contributor permissions + governance queue, review actions, promotion overrides |
-
-Anonymous (unauthenticated) users can browse and resolve. Authentication is required only for contribution and governance.
-
-### 8.5 Database
-
-Uses the existing `users` table from M1. New columns:
-
-| Column | Type | Notes |
-|--------|------|-------|
-| `oauth_provider` | VARCHAR(20) | `github`, `google` |
-| `oauth_id` | TEXT | Provider-specific user ID |
-| `display_name` | TEXT | From OAuth profile |
-| `avatar_url` | TEXT | From OAuth profile |
-| `role` | VARCHAR(20) | `viewer`, `contributor`, `steward` |
-| `last_login_at` | TIMESTAMPTZ | Updated on each login |
-
-Unique constraint: `(oauth_provider, oauth_id)`.
+- **OAuth providers**: GitHub (primary), Google (secondary)
+- **Session management**: JWT access tokens (short-lived) + httpOnly refresh tokens
+- **Roles**: `viewer` → `contributor` → `steward` → `admin` (hierarchy)
+- **Gating**: Governance actions (review, promotion) require `steward` role; contribution requires `contributor` role; browse/resolve remain public
+- **Database**: extends existing `users` table with `oauth_provider`, `oauth_id`, `display_name`, `avatar_url`, `last_login_at`
 
 ---
 
@@ -614,7 +671,7 @@ Unique constraint: `(oauth_provider, oauth_id)`.
 M5i (Foundation + Resolve) ──→ M5ii (Explore + Inspect)
                                         │
                                         ▼
-                                 M5iii (Govern + Auth)
+                                 M5iii (Govern)
                                         │
                                         ▼
                                  M5iv (Polish + Contribution)
@@ -686,18 +743,9 @@ M5i (Foundation + Resolve) ──→ M5ii (Explore + Inspect)
 - [ ] Alternatives comparison (two-column layout)
 - [ ] Version diff view with triage classification
 
-### M5iii: Govern + Auth
+### M5iii: Govern
 
-**Proves:** Stewards can govern the registry through a web interface. OAuth enables human identity.
-
-#### OAuth Login Flow
-- [ ] GitHub OAuth provider integration (backend + frontend)
-- [ ] Google OAuth provider integration (backend + frontend)
-- [ ] JWT token management (access + refresh)
-- [ ] Auth state hook with role checks
-- [ ] Login/logout UI in header
-- [ ] `users` table migration: `oauth_provider`, `oauth_id`, `display_name`, `avatar_url`, `role`, `last_login_at`
-- [ ] Auth middleware for role-gated endpoints
+**Proves:** The registry's governance workflow is operational through a web interface. Auth is deferred to M6 — all governance views and actions are publicly accessible.
 
 #### Govern Dashboard
 - [ ] `GET /api/v1/stats/overview` backend endpoint
@@ -755,7 +803,9 @@ M5i (Foundation + Resolve) ──→ M5ii (Explore + Inspect)
 
 ## 10. Security Considerations
 
-### 10.1 Authentication & Authorization
+### 10.1 Authentication & Authorization (M6)
+
+> Auth is deferred to M6. In M5, all endpoints are publicly accessible. The following requirements apply once M6 is implemented:
 
 - All API calls require authentication except browse and resolve operations (public read)
 - Governance actions (review, promotion override) require `steward` role
@@ -777,7 +827,7 @@ M5i (Foundation + Resolve) ──→ M5ii (Explore + Inspect)
 
 ### 10.4 Frontend Security
 
-- No secrets in client-side code; OAuth client IDs are public, secrets stay on the backend
+- No secrets in client-side code (M6: OAuth client IDs are public, secrets stay on the backend)
 - Dependency audit in CI (npm audit)
 - Subresource integrity (SRI) on CDN-served assets
 
@@ -786,8 +836,8 @@ M5i (Foundation + Resolve) ──→ M5ii (Explore + Inspect)
 | # | Threat | Impact | Mitigation |
 |---|--------|--------|------------|
 | 1 | XSS via skill content | Script execution in user's browser | Safe markdown renderer, CSP headers, no raw HTML rendering |
-| 2 | CSRF on governance actions | Unauthorized review approvals | Double-submit cookie CSRF protection, sameSite cookies |
-| 3 | OAuth token theft | Session hijacking | httpOnly refresh tokens, short-lived access tokens, secure flag |
+| 2 | CSRF on governance actions | Unauthorized review approvals | M5: unprotected (acceptable for dev). M6: double-submit cookie CSRF protection, sameSite cookies |
+| 3 | OAuth token theft (M6) | Session hijacking | M6: httpOnly refresh tokens, short-lived access tokens, secure flag |
 | 4 | Clickjacking | Governance actions triggered by invisible overlay | X-Frame-Options: DENY, CSP frame-ancestors: none |
 | 5 | Embedding map data poisoning | Misleading spatial relationships | Map projections computed server-side from verified embeddings; no client-side embedding input |
 | 6 | Review queue manipulation | Steward tricked into approving malicious skill | Full eval context shown in review interface; injection flags prominently displayed |

@@ -4,17 +4,17 @@
 
 **Goal:** Build a resolution-first web UI for the Loom registry: a Vite + React 19 SPA with four views (Resolve, Explore, Inspect, Govern), skill fingerprint visualizations, a semantic landscape map, and a governance dashboard. Auth is deferred to M6 — all views are public and accessible without authentication.
 
-**Architecture:** Standalone Vite SPA in `/web` directory, talking to the existing FastAPI backend via proxy. TanStack Router for type-safe routing, TanStack Query for data fetching, Tailwind CSS + shadcn/ui for styling, D3/visx for data visualization, React Flow for capability pipeline diagrams, Framer Motion for animations. Four new backend endpoints provide data not available in M1-M4: embedding map, stats overview, eval trends, usage heatmap, governance queue, governance review, and skill timeline.
+**Architecture:** Standalone Vite SPA in `/web` directory, talking to the existing FastAPI backend via proxy. TanStack Router (with @tanstack/router-plugin for file-based routing) for type-safe routing, TanStack Query for data fetching, Tailwind CSS + shadcn/ui for styling, D3.js for data visualization, React Flow for capability pipeline diagrams, Framer Motion for animations. Backend enhancements: unified resolve endpoint, alternative rejection rationale, activity feed, embedding map, stats overview, eval trends, usage heatmap, governance queue, governance review, and skill timeline.
 
 **Tech Stack:**
 - React 19 + TypeScript + Vite
-- Tailwind CSS + shadcn/ui
-- TanStack Router v1 + TanStack Query v5
-- D3.js / visx (semantic map, fingerprint)
+- Tailwind CSS + shadcn/ui (initialized via `npx shadcn@latest init`)
+- TanStack Router v1 + @tanstack/router-plugin + TanStack Query v5
+- D3.js (semantic map, fingerprint SVG)
 - React Flow (capability flow diagrams)
 - Framer Motion (animations)
 - Recharts (charts in Govern view)
-- Vitest + Playwright (testing)
+- Vitest (unit/component tests) + Playwright (local E2E only, not in CI)
 
 **Spec references:**
 - [M5 Web UI Spec](../../specs/2026-03-24-m5-web-ui-spec.md)
@@ -22,6 +22,135 @@
 - [Implementation Milestones](../../specs/implementation-milestones.md)
 
 **Auth note:** Auth is deferred to M6. The Govern view is accessible to anyone. Governance actions (approve/reject) are unprotected — this is acceptable for development and will be gated in M6.
+
+**Seed data:** The existing `scripts/seed.py` seeds 15 skills + 3 capabilities with embeddings. Run `uv run python scripts/seed.py` before frontend verification steps.
+
+**Commit strategy:** Group commits by chunk (~7 commits total), not per-task. Individual task "Commit" steps are informational — stage their files but only commit at chunk boundaries. Chunk-level commit messages are at the end of each chunk section.
+
+**Playwright in CI:** Playwright E2E tests are for local development only. CI runs Vitest (unit + component tests), type checking, linting, and build verification. Playwright requires a running backend with seeded data, making it impractical for CI without significant infrastructure.
+
+---
+
+## Chunk 0: Backend Prerequisites
+
+> These backend tasks have no frontend dependencies and should run in parallel with Chunk 1.
+
+---
+
+### Task 0a: Unified Resolve Endpoint
+
+**Files:**
+- Create: `src/loom/api/routes/resolve.py`
+- Modify: `src/loom/api/app.py` (register route)
+- Create: `tests/unit/test_unified_resolve_route.py`
+
+- [ ] **Step 1: Create unified resolve route**
+
+Create `src/loom/api/routes/resolve.py`:
+- `POST /api/v1/resolve` — wraps existing `UnifiedResolver.resolve()`
+- Request body: `task_description: str`, `context: ResolutionContext` (optional), `type: "any" | "skill" | "capability"` (default `"any"`)
+- Response: `ResolvedResult` (existing union type from `models/resolution.py`)
+- Error: `ResolutionError` with suggestions
+
+- [ ] **Step 2: Register route in app.py**
+
+Add the new router to `src/loom/api/app.py`.
+
+- [ ] **Step 3: Write tests**
+
+Create `tests/unit/test_unified_resolve_route.py`:
+- Test: resolve with `type=any` returns skill or capability
+- Test: resolve with `type=skill` returns only skill
+- Test: resolve with `type=capability` returns only capability
+- Test: empty task_description returns 422
+- Test: alternatives are populated in response
+
+- [ ] **Step 4: Verify**
+
+Run: `uv run pytest tests/unit/test_unified_resolve_route.py -v`
+Expected: PASS.
+
+---
+
+### Task 0b: Alternative Rejection Rationale Enhancement
+
+**Files:**
+- Modify: `src/loom/services/discovery.py` (enhance alternative tradeoff text)
+- Modify: `src/loom/services/capability_discovery.py` (same)
+- Create: `tests/unit/test_rejection_rationale.py`
+
+- [ ] **Step 1: Enhance DiscoveryService alternative rationale**
+
+In `src/loom/services/discovery.py`, update the alternative construction in `resolve()`:
+- Replace static `tradeoff="Alternative skill"` with contextual reasons
+- Compare each alternative against the winner on: match score gap, dependency satisfaction, cost profile, trust tier, scope
+- Generate human-readable tradeoff strings, e.g.:
+  - "Lower semantic relevance (score: 0.62 vs winner: 0.85)"
+  - "Missing required dependency: git"
+  - "Experimental tier — winner is community"
+  - "Higher cost profile (medium vs winner: free)"
+
+- [ ] **Step 2: Enhance CapabilityDiscoveryService alternative rationale**
+
+Same enhancement in `src/loom/services/capability_discovery.py`.
+
+- [ ] **Step 3: Write tests**
+
+Create `tests/unit/test_rejection_rationale.py`:
+- Test: alternatives have non-generic tradeoff strings
+- Test: score gap is mentioned
+- Test: dependency differences are mentioned when applicable
+- Test: trust tier differences are mentioned when applicable
+
+- [ ] **Step 4: Verify**
+
+Run: `uv run pytest tests/unit/test_rejection_rationale.py -v`
+Expected: PASS.
+
+---
+
+### Task 0c: Activity Feed Endpoint
+
+**Files:**
+- Create: `src/loom/services/activity_feed.py`
+- Create: `src/loom/api/routes/activity.py`
+- Modify: `src/loom/api/app.py` (register route)
+- Create: `tests/unit/test_activity_feed.py`
+
+- [ ] **Step 1: Implement ActivityFeedService**
+
+Create `src/loom/services/activity_feed.py`:
+- `get_feed(limit=20, since=None)` → `list[ActivityEvent]`
+- Aggregates events from:
+  - `skills` table: `created_at` → `skill_submitted` events
+  - `capabilities` table: `created_at` → `capability_submitted` events
+  - `trust_audit_log` table: tier changes → `trust_promoted` / `trust_demoted` events
+  - `eval_jobs` table: completed evals → `eval_completed` events
+  - Skills with `deprecated=True` → `skill_deprecated` events
+- Returns unified, chronologically sorted event list (newest first)
+- Each event: `id`, `event_type`, `timestamp`, `skill_slug`/`capability_slug`, `name`, `detail`, optional `from_tier`/`to_tier`/`successor_slug`
+
+- [ ] **Step 2: Create activity route**
+
+Create `src/loom/api/routes/activity.py`:
+- `GET /api/v1/activity/feed?limit=20&since={iso_timestamp}` → `ActivityFeedResponse`
+
+- [ ] **Step 3: Wire into app.py and container**
+
+Register route and wire service.
+
+- [ ] **Step 4: Write tests**
+
+Create `tests/unit/test_activity_feed.py`:
+- Test: empty registry returns empty list
+- Test: events are sorted by timestamp (newest first)
+- Test: `since` parameter filters old events
+- Test: `limit` caps results
+
+- [ ] **Step 5: Verify**
+
+Run: `uv run pytest tests/unit/test_activity_feed.py -v`
+Expected: PASS.
 
 ---
 
@@ -51,13 +180,29 @@ cd web && npm install
 
 ```bash
 cd /Users/adam/Projects/loom/web
-npm install @tanstack/react-router @tanstack/react-query tailwindcss @tailwindcss/vite
+npm install @tanstack/react-router @tanstack/router-plugin @tanstack/react-query tailwindcss @tailwindcss/vite
 npm install framer-motion recharts reactflow @xyflow/react
 npm install react-markdown remark-gfm
 npm install clsx tailwind-merge class-variance-authority lucide-react
-npm install -D @types/d3 d3 visx prettier eslint @eslint/js typescript-eslint
+npm install diff
+npm install -D @types/d3 @types/diff d3 prettier eslint @eslint/js typescript-eslint
 npm install -D vitest @testing-library/react @testing-library/jest-dom jsdom
 ```
+
+- [ ] **Step 2b: Initialize shadcn/ui**
+
+```bash
+cd /Users/adam/Projects/loom/web
+npx shadcn@latest init
+```
+
+Select: TypeScript, default style, Tailwind CSS. Then add initial components:
+
+```bash
+npx shadcn@latest add button input badge card dropdown-menu sheet tabs slider checkbox
+```
+
+Additional components can be added on-demand in later tasks.
 
 - [ ] **Step 3: Configure Tailwind CSS**
 
@@ -73,8 +218,10 @@ Add Tailwind directives to `web/src/index.css`.
 Update `web/vite.config.ts`:
 
 ```typescript
+import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [TanStackRouterVite(), react(), tailwindcss()],
   server: {
     port: 5173,
     proxy: {
@@ -247,9 +394,8 @@ Create `web/src/api/client.ts`:
 - `searchCapabilities(query, filters?)` → `CapabilitySummary[]`
 
 `web/src/api/resolve.ts`:
-- `resolveSkill(body)` → `ResolvedSkill`
-- `resolveCapability(body)` → `ResolvedCapability`
-- `resolveAny(body)` → `ResolvedResult` (calls skill resolve with `type=any`)
+- `resolve(body)` → `ResolvedResult` (calls `POST /api/v1/resolve` — the unified endpoint from Task 0a)
+- Body: `{ task_description, context?, type? }` where type is `"any" | "skill" | "capability"`
 
 `web/src/api/stats.ts`:
 - `getStatsOverview()` → `StatsOverview`
@@ -258,6 +404,9 @@ Create `web/src/api/client.ts`:
 - `getGovernanceQueue(params?)` → `GovernanceQueueData`
 - `submitReview(body)` → `ReviewResult`
 - `getEmbeddingMap()` → `EmbeddingMapData`
+
+`web/src/api/activity.ts`:
+- `getActivityFeed(params?)` → `ActivityFeedResponse` (calls `GET /api/v1/activity/feed` from Task 0c)
 
 - [ ] **Step 4: Create TanStack Query hooks**
 
@@ -280,6 +429,9 @@ Create `web/src/api/client.ts`:
 `web/src/hooks/useStats.ts`:
 - `useStatsOverview()`, `useEvalTrends()`, `useUsageHeatmap()`
 - `useGovernanceQueue()`, `useSubmitReview()`
+
+`web/src/hooks/useActivityFeed.ts`:
+- `useActivityFeed()` — polls `GET /api/v1/activity/feed` every 30s via TanStack Query `refetchInterval`
 
 - [ ] **Step 5: Add QueryClientProvider to App**
 
@@ -557,11 +709,13 @@ git commit -m "feat(m5): resolution history with localStorage persistence"
 - [ ] **Step 1: Implement LivingFeed**
 
 Create `web/src/components/shared/LivingFeed.tsx`:
-- Polls `GET /api/v1/skills?sort=created_at&limit=20` every 30s via TanStack Query `refetchInterval`
-- Shows recent activity items:
-  - New skills: "[name] submitted" with timestamp
-  - Trust changes: "[name] promoted to [tier]" (detect from trust_tier field)
-  - Deprecations: "[name] deprecated"
+- Uses `useActivityFeed` hook (polls `GET /api/v1/activity/feed` from Task 0c every 30s)
+- Shows recent activity items with event-type-specific rendering:
+  - `skill_submitted` / `capability_submitted`: "[name] submitted" with timestamp
+  - `trust_promoted` / `trust_demoted`: "[name] promoted to [tier]" with badge
+  - `skill_deprecated`: "[name] deprecated" with successor link
+  - `eval_completed`: "[name] evaluated" with composite score
+  - `amendment_merged` / `amendment_rejected`: "[name] amendment [status]"
 - Each item: icon (based on event type), name (link to inspect), timestamp (relative: "2m ago")
 - Collapsible via toggle button
 - Scrollable container with max height
@@ -1562,6 +1716,8 @@ Ensure these scripts exist in `web/package.json`:
 
 - [ ] **Step 2: Add frontend job to GitHub Actions**
 
+Note: Playwright E2E tests are NOT included in CI — they require a running backend with seeded data. Only Vitest (unit + component tests), type checking, linting, and build verification run in CI.
+
 Add a `frontend` job to `.github/workflows/ci.yml`:
 ```yaml
   frontend:
@@ -1612,14 +1768,16 @@ git commit -m "ci(m5): add frontend type check, lint, test, and build to GitHub 
 | `web/src/api/capabilities.ts` | Capability endpoint functions |
 | `web/src/api/resolve.ts` | Resolution endpoint functions |
 | `web/src/api/stats.ts` | Stats + governance endpoint functions |
+| `web/src/api/activity.ts` | Activity feed endpoint functions |
 | `web/src/types/api.ts` | TypeScript types mirroring all API models |
-| `web/src/hooks/useResolve.ts` | Resolution query hook |
+| `web/src/hooks/useResolve.ts` | Unified resolution query hook |
 | `web/src/hooks/useSkill.ts` | Skill data hooks |
 | `web/src/hooks/useCapability.ts` | Capability data hook |
 | `web/src/hooks/useSearch.ts` | Debounced search hook |
 | `web/src/hooks/useStats.ts` | Governance stats hooks |
 | `web/src/hooks/useEmbeddingMap.ts` | Embedding map data hook |
 | `web/src/hooks/useGovernanceQueue.ts` | Review queue + mutation hooks |
+| `web/src/hooks/useActivityFeed.ts` | Activity feed polling hook |
 | `web/src/lib/fingerprint.ts` | Cardinal spline math for fingerprint SVG |
 | `web/src/lib/embedding-map.ts` | D3 scale/zoom utilities |
 | `web/src/lib/storage.ts` | localStorage helpers |
@@ -1646,7 +1804,7 @@ git commit -m "ci(m5): add frontend type check, lint, test, and build to GitHub 
 | `web/src/components/resolve/AlternativeList.tsx` | Rejected alternatives |
 | `web/src/components/resolve/ContextToggles.tsx` | Resolution context controls |
 | `web/src/components/resolve/ResolutionHistory.tsx` | Recent queries |
-| `web/src/components/explore/SemanticMap.tsx` | D3/visx canvas with pan/zoom |
+| `web/src/components/explore/SemanticMap.tsx` | D3 canvas with pan/zoom |
 | `web/src/components/explore/SkillNode.tsx` | Map node renderer |
 | `web/src/components/explore/ClusterLabel.tsx` | Category cluster label |
 | `web/src/components/explore/MapSearch.tsx` | Map search overlay |
@@ -1679,6 +1837,9 @@ git commit -m "ci(m5): add frontend type check, lint, test, and build to GitHub 
 
 | File | Purpose |
 |------|---------|
+| `src/loom/api/routes/resolve.py` | Unified resolve endpoint (`POST /api/v1/resolve`) |
+| `src/loom/services/activity_feed.py` | Activity feed aggregation service |
+| `src/loom/api/routes/activity.py` | Activity feed endpoint (`GET /api/v1/activity/feed`) |
 | `src/loom/services/embedding_map.py` | UMAP projection for embedding map |
 | `src/loom/services/stats_service.py` | Registry health and trend statistics |
 | `src/loom/services/governance_service.py` | Review queue and decision logic |
@@ -1687,6 +1848,9 @@ git commit -m "ci(m5): add frontend type check, lint, test, and build to GitHub 
 | `src/loom/api/routes/stats.py` | Stats endpoints |
 | `src/loom/api/routes/governance.py` | Governance queue + review endpoints |
 | `src/loom/api/routes/timeline.py` | Skill timeline endpoint |
+| `tests/unit/test_unified_resolve_route.py` | Unified resolve endpoint tests |
+| `tests/unit/test_rejection_rationale.py` | Alternative rejection rationale tests |
+| `tests/unit/test_activity_feed.py` | Activity feed tests |
 | `tests/unit/test_embedding_map.py` | Embedding map tests |
 | `tests/unit/test_stats_service.py` | Stats service tests |
 | `tests/unit/test_governance_service.py` | Governance service tests |
@@ -1703,20 +1867,27 @@ git commit -m "ci(m5): add frontend type check, lint, test, and build to GitHub 
 | File | Changes |
 |------|---------|
 | `pyproject.toml` | Add `umap-learn`, `numpy` |
-| `src/loom/api/app.py` | Register embeddings, stats, governance, timeline routes |
-| `src/loom/services/container.py` | Wire StatsService, GovernanceService, EmbeddingMapService |
+| `src/loom/api/app.py` | Register resolve, activity, embeddings, stats, governance, timeline routes |
+| `src/loom/services/container.py` | Wire ActivityFeedService, StatsService, GovernanceService, EmbeddingMapService |
+| `src/loom/services/discovery.py` | Enhance alternative rejection rationale (tradeoff field) |
+| `src/loom/services/capability_discovery.py` | Enhance alternative rejection rationale (tradeoff field) |
 | `.github/workflows/ci.yml` | Add frontend CI job |
 
 ## Dependency Graph
 
 ```
+Chunk 0 (backend prerequisites — runs in parallel with Chunk 1)
+├── Task 0a (unified resolve endpoint)
+├── Task 0b (rejection rationale enhancement)
+└── Task 0c (activity feed endpoint)
+
 Task 1 (scaffold)
 ├── Task 2 (layout + routing)
 │   ├── Task 5 (search bar) ──→ Task 6 (primary result) ──→ Task 7 (alternatives)
 │   ├── Task 8 (context toggles)
 │   ├── Task 9 (history)
-│   └── Tasks 5-9 ──→ Task 10 (living feed + resolve assembly)
-├── Task 3 (API client)
+│   └── Tasks 5-9 + Task 0c ──→ Task 10 (living feed + resolve assembly)
+├── Task 3 (API client) ── depends on Task 0a for resolve types
 │   ├── Task 12 (semantic map)
 │   ├── Task 14 (skill detail)
 │   ├── Task 17 (capability detail)
@@ -1736,5 +1907,5 @@ Task 17 ──→ Task 18
 Task 19 (stats + governance endpoints) ──→ Task 20 + Task 21 ──→ Task 22 (govern assembly)
 
 Tasks 10, 13, 18, 22 ──→ Task 23 (animations) + Task 24 (responsive)
-All tasks ──→ Task 25 (integration tests) ──→ Task 26 (CI)
+All tasks ──→ Task 25 (integration tests, local only) ──→ Task 26 (CI — Vitest only)
 ```

@@ -19,6 +19,27 @@ if TYPE_CHECKING:
     from loom.db.repositories.skill_repo import SkillRepo
 
 
+def _build_tradeoff(
+    alt: SkillSummary,
+    alt_score: float,
+    winner: SkillSummary,
+    winner_score: float,
+) -> str:
+    """Build a human-readable tradeoff string comparing an alternative against the winner."""
+    reasons: list[str] = []
+
+    if alt_score != winner_score:
+        reasons.append(f"Lower relevance (score: {alt_score:.2f} vs {winner_score:.2f})")
+
+    if alt.trust_tier != winner.trust_tier:
+        reasons.append(f"Trust tier: {alt.trust_tier.value} (winner: {winner.trust_tier.value})")
+
+    if alt.cost_profile.rank > winner.cost_profile.rank:
+        reasons.append(f"Higher cost ({alt.cost_profile.value} vs {winner.cost_profile.value})")
+
+    return "; ".join(reasons) if reasons else "Lower match score"
+
+
 def _score(skill: SkillSummary, context: ResolutionContext | None) -> float:
     """Compute a ranking score (higher is better)."""
     score = 1.0
@@ -108,14 +129,14 @@ class DiscoveryService:
             key=lambda pair: pair[1],
             reverse=True,
         )
-        best_summary, _best_score = scored[0]
+        best_summary, best_score = scored[0]
         rest = scored[1:4]  # top 3 alternatives
 
         alternatives = [
             Alternative(
                 skill=s,
                 match_score=score,
-                tradeoff="Alternative skill",
+                tradeoff=_build_tradeoff(s, score, best_summary, best_score),
             )
             for s, score in rest
         ]

@@ -12,6 +12,7 @@ from loom.db.repositories.category_repo import CategoryRepo
 from loom.db.repositories.eval_repo import EvalRepo
 from loom.db.repositories.skill_repo import SkillRepo
 from loom.db.repositories.usage_repo import UsageRepo
+from loom.services.activity_feed import ActivityFeedService
 from loom.services.capability_discovery import CapabilityDiscoveryService
 from loom.services.capability_registry import CapabilityRegistryService
 from loom.services.container import ServiceContainer
@@ -112,3 +113,9 @@ def get_behavioral_eval_repo(
     container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> BehavioralEvalRepo:
     return container.behavioral_eval_repo_factory(conn)
+
+
+def get_activity_feed_service(
+    conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+) -> ActivityFeedService:
+    return ActivityFeedService(conn)
