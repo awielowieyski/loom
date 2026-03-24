@@ -51,9 +51,12 @@ def _make_ctx():
     pool.acquire = _acquire
 
     usage_repo = AsyncMock()
+    skill_repo = AsyncMock()
+    skill_repo.get_stale_candidates.return_value = []
     settings = MagicMock()
     settings.pipeline.usage_failure_rate_trigger = 0.30
     settings.pipeline.usage_success_rate_drop_trigger = 0.20
+    settings.pipeline.staleness_window_days = 90
 
     redis = AsyncMock()
 
@@ -61,6 +64,7 @@ def _make_ctx():
         "pool": pool,
         "settings": settings,
         "usage_repo_factory": lambda c: usage_repo,
+        "skill_repo_factory": lambda c: skill_repo,
         "redis": redis,
     }
     return ctx, usage_repo, redis
