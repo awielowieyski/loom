@@ -1,5 +1,6 @@
 """CapabilityDiscoveryService: resolve capabilities from natural-language queries."""
 
+import asyncio
 import uuid
 from typing import TYPE_CHECKING, Any
 
@@ -207,8 +208,10 @@ class CapabilityDiscoveryService:
         step_trust_tiers: list[TrustTier] = []
         trust_warnings: list[str] = []
 
-        for idx, step in enumerate(best.steps):
-            skill = await self._resolve_step_skill(step)
+        # Resolve all step skills in parallel
+        skills = await asyncio.gather(*[self._resolve_step_skill(step) for step in best.steps])
+
+        for idx, (step, skill) in enumerate(zip(best.steps, skills, strict=True)):
             if skill is None:
                 return ResolutionError(
                     error="step_resolution_failed",

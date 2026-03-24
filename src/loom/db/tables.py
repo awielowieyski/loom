@@ -234,7 +234,6 @@ capability_versions = Table(
     Column("changelog", Text, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
     UniqueConstraint("capability_id", "version", name="uq_capability_versions_cap_version"),
-    Index("idx_capability_versions_capability", "capability_id"),
 )
 
 signing_keys = Table(

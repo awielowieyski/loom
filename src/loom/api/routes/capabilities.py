@@ -70,23 +70,35 @@ async def search_capabilities(
     )
 
 
-@router.post("/resolve")
+@router.post("/resolve", response_model=ResolvedCapability)
 async def resolve_capability(
     body: ResolveCapabilityRequest,
     _: Annotated[str, Depends(verify_api_key)],
     discovery: Annotated[CapabilityDiscoveryService, Depends(get_capability_discovery_service)],
 ) -> ResolvedCapability:
     """Resolve the best capability for a task description."""
-    context: ResolutionContext | None = None
-    if body.context is not None:
-        context = ResolutionContext.model_validate(body.context)
+    try:
+        context: ResolutionContext | None = None
+        if body.context is not None:
+            context = ResolutionContext.model_validate(body.context)
 
-    result = await discovery.resolve(body.task_description, context=context)
+        result = await discovery.resolve(body.task_description, context=context)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
 
     if isinstance(result, ResolutionError):
+        detail = result.model_dump()
+        if result.error == "step_resolution_failed":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=detail,
+            )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=result.model_dump(),
+            detail=detail,
         )
     return result
 

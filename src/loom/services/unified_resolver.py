@@ -1,5 +1,6 @@
 """UnifiedResolver: resolve either skills or capabilities from a single entry point."""
 
+import asyncio
 import uuid
 from typing import TYPE_CHECKING, Literal
 
@@ -45,10 +46,14 @@ class UnifiedResolver:
         skill_result: ResolvedSkill | ResolutionError | None = None
         cap_result: ResolvedCapability | ResolutionError | None = None
 
-        if type_filter in ("skill", "any"):
+        if type_filter == "any":
+            skill_result, cap_result = await asyncio.gather(
+                self._skill_service.resolve(task_description, context=context),
+                self._capability_service.resolve(task_description, context=context),
+            )
+        elif type_filter == "skill":
             skill_result = await self._skill_service.resolve(task_description, context=context)
-
-        if type_filter in ("capability", "any"):
+        else:
             cap_result = await self._capability_service.resolve(task_description, context=context)
 
         # Determine winners
@@ -94,24 +99,40 @@ class UnifiedResolver:
         cost_budget: CostProfile | None = None,
     ) -> list["SkillSummary | CapabilitySummary"]:
         """Search across both skills and capabilities."""
-        results: list[SkillSummary | CapabilitySummary] = []
+        if type_filter == "any":
+            skills, caps = await asyncio.gather(
+                self._skill_service.search(
+                    query,
+                    category_id=category_id,
+                    trust_tier=trust_tier,
+                    cost_budget=cost_budget,
+                ),
+                self._capability_service.search(
+                    query,
+                    category_id=category_id,
+                    trust_tier=trust_tier,
+                    cost_budget=cost_budget,
+                ),
+            )
+            return [*skills, *caps]
 
-        if type_filter in ("skill", "any"):
-            skills = await self._skill_service.search(
+        if type_filter == "skill":
+            results: list[SkillSummary | CapabilitySummary] = list(
+                await self._skill_service.search(
+                    query,
+                    category_id=category_id,
+                    trust_tier=trust_tier,
+                    cost_budget=cost_budget,
+                )
+            )
+            return results
+
+        cap_results: list[SkillSummary | CapabilitySummary] = list(
+            await self._capability_service.search(
                 query,
                 category_id=category_id,
                 trust_tier=trust_tier,
                 cost_budget=cost_budget,
             )
-            results.extend(skills)
-
-        if type_filter in ("capability", "any"):
-            caps = await self._capability_service.search(
-                query,
-                category_id=category_id,
-                trust_tier=trust_tier,
-                cost_budget=cost_budget,
-            )
-            results.extend(caps)
-
-        return results
+        )
+        return cap_results
