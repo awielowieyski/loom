@@ -30,11 +30,15 @@ def create_app() -> FastAPI:
     from loom.api.routes.eval import router as eval_router
     from loom.api.routes.health import router as health_router
     from loom.api.routes.skills import router as skills_router
+    from loom.api.routes.skills_m4 import router as skills_m4_router
+    from loom.api.routes.usage import router as usage_router
 
     app.include_router(health_router)
     app.include_router(categories_router)
     app.include_router(skills_router)
     app.include_router(eval_router)
     app.include_router(capabilities_router)
+    app.include_router(usage_router)
+    app.include_router(skills_m4_router)
 
     return app
