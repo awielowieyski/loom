@@ -145,6 +145,35 @@ class EvalRepo:
             return None
         return _row_to_eval_job(row)
 
+    async def get_recent_completed_jobs(
+        self, skill_id: uuid_mod.UUID, limit: int = 2
+    ) -> list[EvalJob]:
+        """Return the most recent completed eval jobs for a skill."""
+        rows = await self._conn.fetch(
+            f"""
+            SELECT {_EVAL_JOB_COLUMNS} FROM eval_jobs
+            WHERE skill_id = $1 AND status = 'completed'
+            ORDER BY completed_at DESC
+            LIMIT $2
+            """,
+            skill_id,
+            limit,
+        )
+        return [_row_to_eval_job(row) for row in rows]
+
+    async def get_recent_completed_jobs_all(self, limit: int = 40) -> list[EvalJob]:
+        """Return the most recent completed eval jobs across all skills."""
+        rows = await self._conn.fetch(
+            f"""
+            SELECT {_EVAL_JOB_COLUMNS} FROM eval_jobs
+            WHERE status = 'completed'
+            ORDER BY completed_at DESC
+            LIMIT $1
+            """,
+            limit,
+        )
+        return [_row_to_eval_job(row) for row in rows]
+
     async def create_dimension_run(
         self,
         *,
