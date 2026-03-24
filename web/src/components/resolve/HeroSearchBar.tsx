@@ -13,28 +13,31 @@ export function HeroSearchBar({ onQueryChange, isLoading, className }: HeroSearc
   const [value, setValue] = useState('')
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  // Stable ref to always call the latest callback without re-triggering the effect
+  const callbackRef = useRef(onQueryChange)
+  callbackRef.current = onQueryChange
 
-  // Debounced callback
+  // Debounced callback — only depends on value, not on the callback identity
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
 
     if (value.trim()) {
       timerRef.current = setTimeout(() => {
-        onQueryChange(value.trim())
+        callbackRef.current(value.trim())
       }, 300)
     }
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
     }
-  }, [value, onQueryChange])
+  }, [value])
 
   const resolveNow = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
     if (value.trim()) {
-      onQueryChange(value.trim())
+      callbackRef.current(value.trim())
     }
-  }, [value, onQueryChange])
+  }, [value])
 
   const clear = useCallback(() => {
     setValue('')

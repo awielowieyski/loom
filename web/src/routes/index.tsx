@@ -59,11 +59,11 @@ function ResolveView() {
   const [context, setContext] = useState<ResolutionContext>({})
   const [result, setResult] = useState<ResolvedResult | null>(null)
 
-  const mutation = useResolve()
+  const { mutate, isPending } = useResolve()
 
   const handleResolve = useCallback(
     (query: string) => {
-      mutation.mutate(
+      mutate(
         { task_description: query, context },
         {
           onSuccess: (data) => {
@@ -74,13 +74,12 @@ function ResolveView() {
         },
       )
     },
-    [context, mutation],
+    [context, mutate],
   )
 
   const handleAlternativeSelect = useCallback(
     (alt: Alternative) => {
-      // Re-resolve using the alternative's name as query
-      mutation.mutate(
+      mutate(
         { task_description: alt.skill.name, context },
         {
           onSuccess: (data) => {
@@ -91,7 +90,7 @@ function ResolveView() {
         },
       )
     },
-    [context, mutation],
+    [context, mutate],
   )
 
   const alternatives = result?.type === 'skill'
@@ -100,20 +99,20 @@ function ResolveView() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
-      <HeroSearchBar onQueryChange={handleResolve} isLoading={mutation.isPending} />
+      <HeroSearchBar onQueryChange={handleResolve} isLoading={isPending} />
 
       <ContextToggles context={context} onContextChange={setContext} />
 
-      {mutation.isPending && !result && <LoadingSkeleton />}
+      {isPending && !result && <LoadingSkeleton />}
 
-      {result && !mutation.isPending && (
+      {result && !isPending && (
         <div className="space-y-4">
           <PrimaryResult result={result} />
           <AlternativeList alternatives={alternatives} onSelect={handleAlternativeSelect} />
         </div>
       )}
 
-      {!result && !mutation.isPending && <EmptyState />}
+      {!result && !isPending && <EmptyState />}
 
       <ResolutionHistory onSelect={handleResolve} />
     </div>
