@@ -9,13 +9,15 @@ import numpy as np
 from loom.models.common import CostProfile, DependencyDeclaration, EvalSpec, Scope, TrustTier
 from loom.models.skill import Skill, SkillSummary, SkillVersion
 
-# Full column list for skills table (21 columns)
+# Full column list for skills table
 _SKILL_COLUMNS = (
     "id, slug, name, description, content, category_id, tags, scope, "
     "version, author_id, signature, trust_tier, cost_profile, "
     "cost_drivers, estimated_duration, dependencies, eval_spec, "
     "extends, embedding, eval_status, composite_score, "
-    "latest_eval_job_id, signature_key_fingerprint, created_at, updated_at"
+    "latest_eval_job_id, signature_key_fingerprint, "
+    "deprecated_at, successor_slug, stale_since, behavioral_score, "
+    "last_eval_at, resolution_count, created_at, updated_at"
 )
 
 # Lighter column list for ranking / summary use — excludes content, embedding, eval_spec
