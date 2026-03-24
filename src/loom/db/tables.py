@@ -78,6 +78,13 @@ skills = Table(
     Column("composite_score", Float, nullable=True),
     Column("eval_status", String(20), nullable=True, server_default="pending"),
     Column("signature_key_fingerprint", Text, nullable=True),
+    # M4: living registry columns
+    Column("deprecated_at", DateTime(timezone=True), nullable=True),
+    Column("successor_slug", Text, nullable=True),
+    Column("stale_since", DateTime(timezone=True), nullable=True),
+    Column("behavioral_score", Float, nullable=True),
+    Column("last_eval_at", DateTime(timezone=True), nullable=True),
+    Column("resolution_count", Integer, nullable=False, server_default="0"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
     Index("idx_skills_category", "category_id"),
@@ -125,6 +132,7 @@ eval_jobs = Table(
     Column("injection_flagged", Boolean, nullable=False, server_default="false"),
     Column("sandbox_passed", Boolean, nullable=True),
     Column("overall_confidence", Float, nullable=True),
+    Column("behavioral_score", Float, nullable=True),
     Column("evaluator_version", Text, nullable=False),
     Column("started_at", DateTime(timezone=True), nullable=True),
     Column("completed_at", DateTime(timezone=True), nullable=True),
@@ -249,4 +257,98 @@ signing_keys = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
     Index("idx_signing_keys_user", "user_id"),
     Index("idx_signing_keys_fingerprint", "fingerprint"),
+)
+
+# --- M4: Living Registry tables ---
+
+usage_reports = Table(
+    "usage_reports",
+    metadata,
+    Column("id", UUID, primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("idempotency_key", Text, unique=True, nullable=False),
+    Column("skill_id", UUID, ForeignKey("skills.id"), nullable=False),
+    Column("skill_version", Text, nullable=False),
+    Column("outcome", String(20), nullable=False),  # success, partial, failure
+    Column("runtime_ms", Integer, nullable=True),
+    Column("context_hash", Text, nullable=True),
+    Column("failure_reason", Text, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    Index("idx_usage_reports_skill_id", "skill_id"),
+    Index("idx_usage_reports_created_at", "created_at"),
+)
+
+usage_aggregates = Table(
+    "usage_aggregates",
+    metadata,
+    Column("id", UUID, primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("skill_id", UUID, ForeignKey("skills.id"), nullable=False),
+    Column("skill_version", Text, nullable=False),
+    Column("window_type", String(10), nullable=False),  # 7d, 30d, 90d
+    Column("success_count", Integer, nullable=False, server_default="0"),
+    Column("partial_count", Integer, nullable=False, server_default="0"),
+    Column("failure_count", Integer, nullable=False, server_default="0"),
+    Column("success_rate", Float, nullable=True),
+    Column("avg_runtime_ms", Float, nullable=True),
+    Column("skip_count", Integer, nullable=False, server_default="0"),
+    Column("computed_at", DateTime(timezone=True), nullable=False),
+    Column("window_start", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("skill_id", "skill_version", "window_type", name="uq_usage_agg_skill_ver_win"),
+)
+
+behavioral_eval_runs = Table(
+    "behavioral_eval_runs",
+    metadata,
+    Column("id", UUID, primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("eval_job_id", UUID, ForeignKey("eval_jobs.id", ondelete="CASCADE"), nullable=False),
+    Column("scenario_index", Integer, nullable=False),
+    Column("run_index", Integer, nullable=False),
+    Column("runner_output", JSONB, nullable=False),
+    Column("judge_score", Float, nullable=False),
+    Column("judge_evidence", JSONB, nullable=False),
+    Column("judge_confidence", Float, nullable=False),
+    Column("injection_detected", Boolean, nullable=False, server_default="false"),
+    Column("runner_model_id", Text, nullable=False),
+    Column("judge_model_id", Text, nullable=False),
+    Column("runner_latency_ms", Integer, nullable=True),
+    Column("judge_latency_ms", Integer, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    UniqueConstraint(
+        "eval_job_id", "scenario_index", "run_index", name="uq_behavioral_runs_job_scen_run"
+    ),
+    Index("idx_behavioral_runs_job", "eval_job_id"),
+)
+
+comparative_eval_results = Table(
+    "comparative_eval_results",
+    metadata,
+    Column("id", UUID, primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("skill_a_id", UUID, ForeignKey("skills.id"), nullable=False),
+    Column("skill_a_version", Text, nullable=False),
+    Column("skill_b_id", UUID, ForeignKey("skills.id"), nullable=False),
+    Column("skill_b_version", Text, nullable=False),
+    Column("scenario_index", Integer, nullable=False),
+    Column("winner", String(10), nullable=False),  # a, b, tie
+    Column("score_a", JSONB, nullable=False),
+    Column("score_b", JSONB, nullable=False),
+    Column("preference_confidence", Float, nullable=False),
+    Column("reasoning", Text, nullable=False),
+    Column("classification", String(20), nullable=True),
+    Column("judge_model_id", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
+)
+
+skill_rankings = Table(
+    "skill_rankings",
+    metadata,
+    Column("id", UUID, primary_key=True, server_default=text("gen_random_uuid()")),
+    Column("skill_id", UUID, ForeignKey("skills.id"), nullable=False),
+    Column("category_id", UUID, ForeignKey("categories.id"), nullable=False),
+    Column("rating", Float, nullable=False, server_default="1200.0"),
+    Column("matches_played", Integer, nullable=False, server_default="0"),
+    Column("wins", Integer, nullable=False, server_default="0"),
+    Column("losses", Integer, nullable=False, server_default="0"),
+    Column("ties", Integer, nullable=False, server_default="0"),
+    Column("last_match_at", DateTime(timezone=True), nullable=True),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    UniqueConstraint("skill_id", "category_id", name="uq_skill_rankings_skill_cat"),
 )
