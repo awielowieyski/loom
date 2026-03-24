@@ -116,7 +116,7 @@ class TestBehavioralJudge:
         runner_output: RunnerOutput,
         scenario: EvalScenario,
     ) -> None:
-        """User message must NOT contain 'instructions' — judge never sees skill content."""
+        """User msg must NOT contain 'instructions' — judge never sees skill content."""
         factory, mock_agent = _mock_agent_factory(_make_valid_judge_response())
         judge = BehavioralJudge(factory, registry, model_id="test-model")
 
