@@ -6,6 +6,7 @@ import type {
   GovernanceQueueItem,
   GovernanceReviewSubmission,
   EmbeddingMapPoint,
+  EmbeddingMapData,
 } from '@/types/api'
 
 export function getStatsOverview() {
@@ -30,4 +31,8 @@ export function submitReview(submission: GovernanceReviewSubmission) {
 
 export function getEmbeddingMap() {
   return apiGet<EmbeddingMapPoint[]>('/stats/embedding-map')
+}
+
+export function getEmbeddingMapV2() {
+  return apiGet<EmbeddingMapData>('/embeddings/map')
 }

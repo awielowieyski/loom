@@ -1,16 +1,121 @@
+import { useState, useCallback } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
+import { useResolve } from '@/hooks/useResolve'
+import { HeroSearchBar } from '@/components/resolve/HeroSearchBar'
+import { PrimaryResult } from '@/components/resolve/PrimaryResult'
+import { AlternativeList } from '@/components/resolve/AlternativeList'
+import { ContextToggles } from '@/components/resolve/ContextToggles'
+import { ResolutionHistory, notifyHistoryChange } from '@/components/resolve/ResolutionHistory'
+import { addToHistory } from '@/lib/storage'
+import type { ResolutionContext, ResolvedResult, Alternative } from '@/types/api'
 
 export const Route = createFileRoute('/')({
   component: ResolveView,
 })
 
-function ResolveView() {
+function LoadingSkeleton() {
   return (
-    <div className="space-y-4">
-      <h1 className="text-3xl font-bold tracking-tight">Resolve</h1>
-      <p className="text-muted-foreground">
-        Describe a task and find the best skill or capability to accomplish it.
+    <div className="space-y-4 animate-pulse">
+      <div className="rounded-xl border bg-card p-6 space-y-3">
+        <div className="flex items-start gap-4">
+          <div className="h-16 w-16 rounded-full bg-muted" />
+          <div className="flex-1 space-y-2">
+            <div className="h-5 w-1/3 rounded bg-muted" />
+            <div className="h-4 w-2/3 rounded bg-muted" />
+          </div>
+        </div>
+        <div className="h-3 w-1/4 rounded bg-muted" />
+      </div>
+      <div className="space-y-2">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <div key={i} className="rounded-xl border bg-card p-4">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-full bg-muted" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-3.5 w-1/4 rounded bg-muted" />
+                <div className="h-3 w-1/2 rounded bg-muted" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function EmptyState() {
+  return (
+    <div className="text-center py-16 space-y-3">
+      <h2 className="text-xl font-semibold text-foreground/80">Find the right skill</h2>
+      <p className="text-muted-foreground max-w-md mx-auto">
+        Describe a task in natural language and Loom will resolve the best-matching skill or
+        capability from the registry, ranked by trust, quality, and fit.
       </p>
+    </div>
+  )
+}
+
+function ResolveView() {
+  const [context, setContext] = useState<ResolutionContext>({})
+  const [result, setResult] = useState<ResolvedResult | null>(null)
+
+  const mutation = useResolve()
+
+  const handleResolve = useCallback(
+    (query: string) => {
+      mutation.mutate(
+        { task_description: query, context },
+        {
+          onSuccess: (data) => {
+            setResult(data)
+            addToHistory(query)
+            notifyHistoryChange()
+          },
+        },
+      )
+    },
+    [context, mutation],
+  )
+
+  const handleAlternativeSelect = useCallback(
+    (alt: Alternative) => {
+      // Re-resolve using the alternative's name as query
+      mutation.mutate(
+        { task_description: alt.skill.name, context },
+        {
+          onSuccess: (data) => {
+            setResult(data)
+            addToHistory(alt.skill.name)
+            notifyHistoryChange()
+          },
+        },
+      )
+    },
+    [context, mutation],
+  )
+
+  const alternatives = result?.type === 'skill'
+    ? result.skill?.alternatives ?? []
+    : result?.capability?.alternatives ?? []
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-4">
+      <HeroSearchBar onQueryChange={handleResolve} isLoading={mutation.isPending} />
+
+      <ContextToggles context={context} onContextChange={setContext} />
+
+      {mutation.isPending && !result && <LoadingSkeleton />}
+
+      {result && !mutation.isPending && (
+        <div className="space-y-4">
+          <PrimaryResult result={result} />
+          <AlternativeList alternatives={alternatives} onSelect={handleAlternativeSelect} />
+        </div>
+      )}
+
+      {!result && !mutation.isPending && <EmptyState />}
+
+      <ResolutionHistory onSelect={handleResolve} />
     </div>
   )
 }

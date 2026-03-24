@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { getEmbeddingMap } from '@/api/stats'
+import { getEmbeddingMapV2 } from '@/api/stats'
 
 export function useEmbeddingMap() {
   return useQuery({
-    queryKey: ['stats', 'embedding-map'],
-    queryFn: getEmbeddingMap,
+    queryKey: ['embeddings', 'map'],
+    queryFn: getEmbeddingMapV2,
     staleTime: 60_000,
   })
 }

@@ -430,6 +430,33 @@ export interface EmbeddingMapPoint {
   category: string
 }
 
+export interface EmbeddingMapSkill {
+  slug: string
+  name: string
+  x: number
+  y: number
+  trust_tier: TrustTier
+  category: string
+  composite_score: number | null
+  behavioral_score: number | null
+}
+
+export interface EmbeddingMapCapability {
+  slug: string
+  name: string
+  x: number
+  y: number
+  trust_tier: TrustTier
+  category: string
+  composite_score: number | null
+  step_slugs: string[]
+}
+
+export interface EmbeddingMapData {
+  skills: EmbeddingMapSkill[]
+  capabilities: EmbeddingMapCapability[]
+}
+
 // ---- Timeline ----
 
 export interface TimelineEntry {
