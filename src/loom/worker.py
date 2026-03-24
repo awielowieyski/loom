@@ -70,6 +70,10 @@ async def startup(ctx: dict[str, Any]) -> None:
     from loom.services.behavioral_judge import BehavioralJudge
     from loom.services.behavioral_runner import BehavioralRunner
 
+    # NOTE: runner_model and judge_model settings are metadata-only; they are
+    # stored on eval records for provenance but all inference currently uses
+    # the default llm_model via agent_factory.  Separate model support (i.e.
+    # passing distinct Model instances to Runner vs Judge) is a future enhancement.
     runner_model_id = settings.pipeline.runner_model or settings.llm.model
     judge_model_id = settings.pipeline.judge_model or settings.llm.model
 
@@ -204,6 +208,7 @@ async def run_eval_job(ctx: dict[str, Any], skill_id: str, trigger: str) -> dict
             eval_status="completed",
             composite_score=result.composite_score,
             latest_eval_job_id=job.id,
+            last_eval_at=datetime.now(UTC),
         )
 
     # Dispatch behavioral evaluation if the M2 pipeline passed
@@ -284,6 +289,7 @@ async def run_behavioral_eval_job(
             composite_score=skill.composite_score,
             latest_eval_job_id=uuid.UUID(eval_job_id),
             behavioral_score=eval_result.behavioral_score,
+            last_eval_at=datetime.now(UTC),
         )
 
     logger.info(

@@ -11,7 +11,7 @@ _EVAL_JOB_COLUMNS = (
     "id, skill_id, skill_version, content_hash, trigger_type, status, "
     "structural_report, composite_score, dimension_scores, dimension_confidence, "
     "injection_flagged, sandbox_passed, overall_confidence, evaluator_version, "
-    "started_at, completed_at, created_at"
+    "behavioral_score, started_at, completed_at, created_at"
 )
 
 _DIMENSION_RUN_COLUMNS = (

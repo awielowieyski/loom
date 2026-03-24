@@ -163,25 +163,6 @@ class UsageRepo:
         )
         return [_row_to_usage_aggregate(row) for row in rows]
 
-    async def get_skills_needing_staleness_check(
-        self,
-        days: int,
-    ) -> list[uuid_mod.UUID]:
-        """Return skill IDs with no usage reports in `days` and stale_since IS NULL."""
-        rows = await self._conn.fetch(
-            """
-            SELECT s.id FROM skills s
-            WHERE s.stale_since IS NULL
-            AND NOT EXISTS (
-                SELECT 1 FROM usage_reports ur
-                WHERE ur.skill_id = s.id
-                AND ur.created_at >= now() - ($1 || ' days')::interval
-            )
-            """,
-            str(days),
-        )
-        return [row["id"] for row in rows]
-
     async def count_reports_in_window(
         self,
         skill_id: uuid_mod.UUID,

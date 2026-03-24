@@ -120,13 +120,41 @@ class ComparativeEvalService:
             }
         )
 
-        # 4. Get system prompt and call judge
+        # 4. Get system prompt and call judge (with retry on JSON parse failure)
         variant = self._prompt_registry.get_behavioral_variant("comparative_judge")
         agent = self._agent_factory(variant.system_prompt)
-        raw_result = await agent.run(user_message)
-        raw_text = raw_result.output if hasattr(raw_result, "output") else str(raw_result)
-        cleaned = strip_code_fences(raw_text)
-        data = json.loads(cleaned)
+
+        data: dict[str, Any] | None = None
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                raw_result = await agent.run(user_message)
+                raw_text = raw_result.output if hasattr(raw_result, "output") else str(raw_result)
+                cleaned = strip_code_fences(raw_text)
+                data = json.loads(cleaned)
+                break
+            except (json.JSONDecodeError, ValueError, KeyError) as exc:
+                last_error = exc
+                logger.warning(
+                    "Comparative judge JSON parse failed (attempt %d/3) for scenario %d: %s",
+                    attempt + 1,
+                    scenario_index,
+                    exc,
+                )
+
+        if data is None:
+            logger.error(
+                "Comparative judge failed after 3 attempts for scenario %d, returning tie: %s",
+                scenario_index,
+                last_error,
+            )
+            data = {
+                "score_x": {},
+                "score_y": {},
+                "confidence": 0.0,
+                "reasoning": f"Judge parse failure after 3 attempts: {last_error}",
+                "preference": "TIE",
+            }
 
         # 5. Parse scores
         score_x = ComparativeAxisScores(**(data.get("score_x", {})))

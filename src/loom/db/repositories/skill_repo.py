@@ -1,6 +1,7 @@
 """Skill repository with raw asyncpg SQL."""
 
 import uuid as uuid_mod
+from datetime import datetime
 from typing import Any
 
 import asyncpg
@@ -414,6 +415,7 @@ class SkillRepo:
         composite_score: float | None = None,
         latest_eval_job_id: uuid_mod.UUID | None = None,
         behavioral_score: float | None = None,
+        last_eval_at: datetime | None = None,
     ) -> None:
         """Update evaluation-related fields on a skill row."""
         set_parts = ["eval_status = $1", "updated_at = now()"]
@@ -430,6 +432,10 @@ class SkillRepo:
         if behavioral_score is not None:
             params.append(behavioral_score)
             set_parts.append(f"behavioral_score = ${len(params)}")
+
+        if last_eval_at is not None:
+            params.append(last_eval_at)
+            set_parts.append(f"last_eval_at = ${len(params)}")
 
         params.append(skill_id)
         await self._conn.execute(

@@ -173,7 +173,7 @@ async def test_deprecate_skill_sets_fields(service, skill_repo):
 async def test_deprecate_with_nonexistent_successor_raises(service, skill_repo):
     """Deprecate with non-existent successor raises ValueError."""
     skill = _make_skill("old-skill")
-    skill_repo.get_by_slug.side_effect = lambda slug: (skill if slug == "old-skill" else None)
+    skill_repo.get_by_slug.side_effect = lambda slug: skill if slug == "old-skill" else None
 
     with pytest.raises(ValueError, match="Successor skill not found"):
         await service.deprecate_skill("old-skill", successor_slug="ghost")
