@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from loom.models.common import EvalDimension
 from loom.models.eval import DimensionResult, IsolatedFragments
+from loom.services._llm_utils import llm_call_with_retry
 from loom.services._llm_utils import strip_code_fences as _strip_code_fences
 
 if TYPE_CHECKING:
@@ -148,36 +149,17 @@ class LLMEvaluator:
         agent = self._agent_factory(variant.system_prompt)
         user_message = _build_user_message(fragments, dimension)
 
-        attempts = 0
-        last_error: Exception | None = None
+        def _parse(raw_text: str) -> DimensionResult:
+            return _parse_response(raw_text, dimension)
 
-        while attempts <= self._max_retries:
-            try:
-                result = await agent.run(user_message)
-                # pydantic-ai Agent.run returns a RunResult; extract text
-                raw_text = result.output if hasattr(result, "output") else str(result)
-                dim_result = _parse_response(raw_text, dimension)
-                dim_result.prompt_variant = variant.name
-                dim_result.model_id = self._model_id
-                return dim_result
-            except Exception as exc:  # noqa: BLE001
-                last_error = exc
-                attempts += 1
-                logger.warning(
-                    "LLM eval parse failure (attempt %d/%d) for %s: %s",
-                    attempts,
-                    self._max_retries + 1,
-                    dimension.value,
-                    exc,
-                )
-
-        logger.error(
-            "All %d attempts failed for %s, returning fallback. Last error: %s",
-            self._max_retries + 1,
-            dimension.value,
-            last_error,
+        result, _elapsed_ms = await llm_call_with_retry(
+            agent, user_message, _parse, self._max_retries, f"LLMEval({dimension.value})"
         )
-        return _fallback_result(dimension)
+        if result is None:
+            return _fallback_result(dimension)
+        result.prompt_variant = variant.name
+        result.model_id = self._model_id
+        return result
 
     async def evaluate_all(
         self,

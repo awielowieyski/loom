@@ -38,7 +38,6 @@ class UsageService:
             idempotency_key=report.idempotency_key,
         )
 
-        await self._skill_repo.increment_resolution_count(skill.id)
         await self._skill_repo.clear_stale(skill.id)
 
         return usage_report

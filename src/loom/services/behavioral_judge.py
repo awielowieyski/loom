@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 from typing import TYPE_CHECKING, Any
 
 from loom.models.behavioral import JudgeScore
-from loom.services._llm_utils import strip_code_fences
+from loom.services._llm_utils import llm_call_with_retry, strip_code_fences
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -40,6 +39,10 @@ class BehavioralJudge:
         self._model_id = model_id
         self._max_retries = max_retries
 
+    @property
+    def model_id(self) -> str:
+        return self._model_id
+
     async def judge(
         self,
         runner_output: RunnerOutput,
@@ -64,41 +67,22 @@ class BehavioralJudge:
             }
         )
 
-        attempts = 0
-        last_error: Exception | None = None
-        start_ns = time.monotonic_ns()
+        def _parse(raw_text: str) -> JudgeScore:
+            cleaned = strip_code_fences(raw_text)
+            data = json.loads(cleaned)
+            return JudgeScore(**data)
 
-        while attempts <= self._max_retries:
-            try:
-                result = await agent.run(user_message)
-                raw_text = result.output if hasattr(result, "output") else str(result)
-                cleaned = strip_code_fences(raw_text)
-                data = json.loads(cleaned)
-                judge_score = JudgeScore(**data)
-                elapsed_ms = (time.monotonic_ns() - start_ns) // 1_000_000
-                return judge_score, int(elapsed_ms)
-            except Exception as exc:  # noqa: BLE001
-                last_error = exc
-                attempts += 1
-                logger.warning(
-                    "Judge parse failure (attempt %d/%d): %s",
-                    attempts,
-                    self._max_retries + 1,
-                    exc,
-                )
-
-        elapsed_ms = (time.monotonic_ns() - start_ns) // 1_000_000
-        logger.error(
-            "All %d judge attempts failed, returning fallback. Last error: %s",
-            self._max_retries + 1,
-            last_error,
+        result, elapsed_ms = await llm_call_with_retry(
+            agent, user_message, _parse, self._max_retries, "Judge"
         )
-        fallback = JudgeScore(
-            outcome_quality=0.0,
-            completeness=0.0,
-            efficiency=0.0,
-            evidence="Judge response could not be parsed after retries",
-            confidence=0.0,
-            injection_detected=False,
-        )
-        return fallback, int(elapsed_ms)
+        if result is None:
+            fallback = JudgeScore(
+                outcome_quality=0.0,
+                completeness=0.0,
+                efficiency=0.0,
+                evidence="Judge response could not be parsed after retries",
+                confidence=0.0,
+                injection_detected=False,
+            )
+            return fallback, elapsed_ms
+        return result, elapsed_ms

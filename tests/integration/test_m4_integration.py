@@ -79,12 +79,12 @@ async def test_behavioral_eval_pipeline_mock_llm() -> None:
     # Mock runner: returns RunnerOutput + latency
     mock_runner = AsyncMock()
     mock_runner.run = AsyncMock(return_value=(runner_output, 100))
-    mock_runner._model_id = "test-runner-model"
+    mock_runner.model_id = "test-runner-model"
 
     # Mock judge: returns JudgeScore + latency
     mock_judge = AsyncMock()
     mock_judge.judge = AsyncMock(return_value=(judge_score, 50))
-    mock_judge._model_id = "test-judge-model"
+    mock_judge.model_id = "test-judge-model"
 
     # Mock repo: returns a BehavioralRunResult
     mock_repo = AsyncMock()
@@ -109,7 +109,6 @@ async def test_behavioral_eval_pipeline_mock_llm() -> None:
     service = BehavioralEvalService(
         runner=mock_runner,
         judge=mock_judge,
-        behavioral_eval_repo=mock_repo,
         runs_per_scenario=3,
     )
 
@@ -123,7 +122,7 @@ async def test_behavioral_eval_pipeline_mock_llm() -> None:
     assert result.behavioral_score > 0
     # Median of [0.8, 0.8, 0.8, 0.8, 0.8, 0.8] = 0.8  (mean of 0.85, 0.80, 0.75)
     assert abs(result.behavioral_score - 0.8) < 0.01
-    assert len(result.per_run) == 6
+    assert len(result.pending_runs) == 6
 
 
 # ---------------------------------------------------------------------------

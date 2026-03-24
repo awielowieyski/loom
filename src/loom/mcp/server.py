@@ -94,7 +94,8 @@ async def resolve(
             result = unified_result.model_dump()
 
         # Enrich with M4 fields if a skill was resolved
-        slug = result.get("slug")
+        skill_data = result.get("skill")
+        slug = skill_data.get("slug") if isinstance(skill_data, dict) else None
         if slug:
             skill = await skill_repo.get_by_slug(slug)
             if skill is not None:

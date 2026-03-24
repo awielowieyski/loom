@@ -106,6 +106,9 @@ async def shutdown(ctx: dict[str, Any]) -> None:
     pool = ctx.get("pool")
     if pool is not None:
         await pool.close()
+    redis = ctx.get("redis")
+    if redis is not None:
+        await redis.close()
     logger.info("Worker shutdown — pool closed")
 
 
@@ -250,7 +253,7 @@ async def run_behavioral_eval_job(
 
     pool = ctx["pool"]
 
-    # Fetch skill
+    # --- Phase A: fetch skill (connection released immediately) ---
     async with pool.acquire() as conn:
         skill_repo = ctx["skill_repo_factory"](conn)
         skill = await skill_repo.get_by_id(uuid.UUID(skill_id))
@@ -258,27 +261,27 @@ async def run_behavioral_eval_job(
             logger.error("Skill %s not found for behavioral eval", skill_id)
             return {"error": f"Skill {skill_id} not found"}
 
-    # Run behavioral evaluation
-    async with pool.acquire() as conn:
-        behavioral_eval_repo = ctx["behavioral_eval_repo_factory"](conn)
-        service = BehavioralEvalService(
-            runner=ctx["behavioral_runner"],
-            judge=ctx["behavioral_judge"],
-            behavioral_eval_repo=behavioral_eval_repo,
-            runs_per_scenario=ctx["behavioral_runs_per_scenario"],
-        )
-
-        eval_result = await service.run_evaluation(skill, uuid.UUID(eval_job_id))
+    # --- Phase B: run evaluation (no DB connection held) ---
+    service = BehavioralEvalService(
+        runner=ctx["behavioral_runner"],
+        judge=ctx["behavioral_judge"],
+        runs_per_scenario=ctx["behavioral_runs_per_scenario"],
+    )
+    eval_result = await service.run_evaluation(skill, uuid.UUID(eval_job_id))
 
     if eval_result is None:
         logger.info("Behavioral eval not applicable for skill %s", skill_id)
         return {"job_id": eval_job_id, "behavioral_score": None, "run_count": 0}
 
-    # Persist aggregate score
+    # --- Phase C: persist results (fresh DB connection) ---
     async with pool.acquire() as conn:
+        behavioral_eval_repo = ctx["behavioral_eval_repo_factory"](conn)
         eval_repo = ctx["eval_repo_factory"](conn)
         skill_repo = ctx["skill_repo_factory"](conn)
 
+        await BehavioralEvalService.persist_runs(
+            behavioral_eval_repo, uuid.UUID(eval_job_id), eval_result.pending_runs
+        )
         await eval_repo.update_eval_job(
             uuid.UUID(eval_job_id),
             behavioral_score=eval_result.behavioral_score,
@@ -286,7 +289,6 @@ async def run_behavioral_eval_job(
         await skill_repo.update_eval_fields(
             skill.id,
             eval_status="completed",
-            composite_score=skill.composite_score,
             latest_eval_job_id=uuid.UUID(eval_job_id),
             behavioral_score=eval_result.behavioral_score,
             last_eval_at=datetime.now(UTC),

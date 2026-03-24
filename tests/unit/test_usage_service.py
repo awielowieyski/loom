@@ -96,7 +96,7 @@ async def test_report_usage_success(service, usage_repo, skill_repo):
     assert result.skill_id == skill.id
     skill_repo.get_by_slug.assert_awaited_once_with("test-skill")
     usage_repo.create_usage_report.assert_awaited_once()
-    skill_repo.increment_resolution_count.assert_awaited_once_with(skill.id)
+    skill_repo.clear_stale.assert_awaited_once_with(skill.id)
 
 
 @pytest.mark.asyncio

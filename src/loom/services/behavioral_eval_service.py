@@ -3,6 +3,12 @@
 Coordinates the Runner and Judge to evaluate a skill's behavioral quality.
 Each scenario is run multiple times to ensure consistency. The aggregate
 score uses median consensus for outlier resistance.
+
+The evaluation is split into two phases:
+  1. Inference (run_evaluation): Runs all LLM calls, collects results in-memory.
+     No DB connection is needed during this phase.
+  2. Persistence (persist_runs): Writes collected runs to the DB.
+     Called by the worker with a fresh DB connection.
 """
 
 from __future__ import annotations
@@ -11,7 +17,7 @@ import logging
 import statistics
 from typing import TYPE_CHECKING
 
-from loom.models.behavioral import BehavioralEvalResult, BehavioralRunResult
+from loom.models.behavioral import BehavioralEvalResult, PendingBehavioralRun
 from loom.models.common import BehavioralEvalApplicability
 
 if TYPE_CHECKING:
@@ -47,12 +53,10 @@ class BehavioralEvalService:
         self,
         runner: BehavioralRunner,
         judge: BehavioralJudge,
-        behavioral_eval_repo: BehavioralEvalRepo,
         runs_per_scenario: int = 3,
     ) -> None:
         self._runner = runner
         self._judge = judge
-        self._repo = behavioral_eval_repo
         self._runs_per_scenario = runs_per_scenario
 
     async def run_evaluation(
@@ -60,7 +64,11 @@ class BehavioralEvalService:
         skill: Skill,
         eval_job_id: uuid_mod.UUID,
     ) -> BehavioralEvalResult | None:
-        """Run behavioral evaluation. Returns None if not applicable."""
+        """Run behavioral evaluation (inference only — no DB writes).
+
+        Returns None if not applicable, otherwise returns results with
+        pending_runs populated for later persistence.
+        """
         eval_spec = skill.eval_spec
         scenarios = eval_spec.scenarios
         quality_dimensions: list[QualityDimension] = eval_spec.quality_dimensions
@@ -75,7 +83,7 @@ class BehavioralEvalService:
             return None
 
         all_composites: list[float] = []
-        per_run: list[BehavioralRunResult] = []
+        pending_runs: list[PendingBehavioralRun] = []
 
         for scenario_idx, scenario in enumerate(active_scenarios):
             for run_idx in range(self._runs_per_scenario):
@@ -96,23 +104,22 @@ class BehavioralEvalService:
                     ]
                 )
 
-                # Persist the run
-                run_result = await self._repo.create_behavioral_run(
-                    eval_job_id=eval_job_id,
-                    scenario_index=scenario_idx,
-                    run_index=run_idx,
-                    runner_output=runner_output.model_dump(),
-                    judge_score=composite,
-                    judge_evidence=judge_score.model_dump(),
-                    judge_confidence=judge_score.confidence,
-                    injection_detected=judge_score.injection_detected,
-                    runner_model_id=self._runner._model_id,
-                    judge_model_id=self._judge._model_id,
-                    runner_latency_ms=runner_latency,
-                    judge_latency_ms=judge_latency,
+                # Collect run data in-memory (no DB write)
+                pending_runs.append(
+                    PendingBehavioralRun(
+                        scenario_index=scenario_idx,
+                        run_index=run_idx,
+                        runner_output=runner_output,
+                        judge_score=composite,
+                        judge_evidence=judge_score,
+                        judge_confidence=judge_score.confidence,
+                        injection_detected=judge_score.injection_detected,
+                        runner_model_id=self._runner.model_id,
+                        judge_model_id=self._judge.model_id,
+                        runner_latency_ms=runner_latency,
+                        judge_latency_ms=judge_latency,
+                    )
                 )
-
-                per_run.append(run_result)
                 all_composites.append(composite)
 
         # Aggregate scores
@@ -124,5 +131,28 @@ class BehavioralEvalService:
             run_count=len(all_composites),
             scenario_count=len(active_scenarios),
             variance=variance,
-            per_run=per_run,
+            pending_runs=pending_runs,
         )
+
+    @staticmethod
+    async def persist_runs(
+        repo: BehavioralEvalRepo,
+        eval_job_id: uuid_mod.UUID,
+        pending_runs: list[PendingBehavioralRun],
+    ) -> None:
+        """Persist collected runs to the database (Phase C)."""
+        for run in pending_runs:
+            await repo.create_behavioral_run(
+                eval_job_id=eval_job_id,
+                scenario_index=run.scenario_index,
+                run_index=run.run_index,
+                runner_output=run.runner_output.model_dump(),
+                judge_score=run.judge_score,
+                judge_evidence=run.judge_evidence.model_dump(),
+                judge_confidence=run.judge_confidence,
+                injection_detected=run.injection_detected,
+                runner_model_id=run.runner_model_id,
+                judge_model_id=run.judge_model_id,
+                runner_latency_ms=run.runner_latency_ms,
+                judge_latency_ms=run.judge_latency_ms,
+            )

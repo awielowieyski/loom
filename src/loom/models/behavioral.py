@@ -90,6 +90,22 @@ class SkillRanking(BaseModel):
     updated_at: datetime | None = None
 
 
+class PendingBehavioralRun(BaseModel):
+    """In-memory run data collected during inference, before DB persistence."""
+
+    scenario_index: int
+    run_index: int
+    runner_output: RunnerOutput
+    judge_score: float
+    judge_evidence: JudgeScore
+    judge_confidence: float
+    injection_detected: bool = False
+    runner_model_id: str = ""
+    judge_model_id: str = ""
+    runner_latency_ms: int | None = None
+    judge_latency_ms: int | None = None
+
+
 class BehavioralEvalResult(BaseModel):
     """Aggregated result from behavioral evaluation of a skill."""
 
@@ -98,6 +114,7 @@ class BehavioralEvalResult(BaseModel):
     scenario_count: int
     variance: float
     per_run: list[BehavioralRunResult] = Field(default_factory=list)
+    pending_runs: list[PendingBehavioralRun] = Field(default_factory=list)
 
 
 class ComparisonSummary(BaseModel):

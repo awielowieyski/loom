@@ -1,13 +1,12 @@
 """Tests for BehavioralEvalService — orchestrates N runs per scenario."""
 
 import uuid
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from loom.models.behavioral import (
     BehavioralEvalResult,
-    BehavioralRunResult,
     JudgeScore,
+    PendingBehavioralRun,
     RunnerOutput,
 )
 from loom.models.common import (
@@ -80,58 +79,18 @@ def _make_judge_score(
     )
 
 
-def _make_behavioral_run_result(
-    eval_job_id: uuid.UUID,
-    scenario_index: int = 0,
-    run_index: int = 0,
-    judge_score: float = 0.8,
-) -> BehavioralRunResult:
-    return BehavioralRunResult(
-        id=uuid.uuid4(),
-        eval_job_id=eval_job_id,
-        scenario_index=scenario_index,
-        run_index=run_index,
-        runner_output=_make_runner_output(),
-        judge_score=judge_score,
-        judge_evidence=_make_judge_score(),
-        judge_confidence=0.85,
-        injection_detected=False,
-        runner_model_id="test-runner",
-        judge_model_id="test-judge",
-    )
-
-
 def _mock_runner(output: RunnerOutput | None = None) -> AsyncMock:
     runner = AsyncMock()
-    runner._model_id = "test-runner"
+    runner.model_id = "test-runner"
     runner.run = AsyncMock(return_value=(output or _make_runner_output(), 100))
     return runner
 
 
 def _mock_judge(score: JudgeScore | None = None) -> AsyncMock:
     judge = AsyncMock()
-    judge._model_id = "test-judge"
+    judge.model_id = "test-judge"
     judge.judge = AsyncMock(return_value=(score or _make_judge_score(), 50))
     return judge
-
-
-def _mock_repo(eval_job_id: uuid.UUID) -> AsyncMock:
-    repo = AsyncMock()
-    call_count = 0
-
-    async def create_run(**kwargs: Any) -> BehavioralRunResult:
-        nonlocal call_count
-        result = _make_behavioral_run_result(
-            eval_job_id=eval_job_id,
-            scenario_index=kwargs.get("scenario_index", 0),
-            run_index=kwargs.get("run_index", call_count),
-            judge_score=kwargs.get("judge_score", 0.8),
-        )
-        call_count += 1
-        return result
-
-    repo.create_behavioral_run = AsyncMock(side_effect=create_run)
-    return repo
 
 
 # ---------------------------------------------------------------------------
@@ -147,10 +106,9 @@ class TestBehavioralEvalService:
         eval_job_id = uuid.uuid4()
         runner = _mock_runner()
         judge = _mock_judge()
-        repo = _mock_repo(eval_job_id)
         skill = _make_skill()
 
-        service = BehavioralEvalService(runner, judge, repo, runs_per_scenario=3)
+        service = BehavioralEvalService(runner, judge, runs_per_scenario=3)
         result = await service.run_evaluation(skill, eval_job_id)
 
         assert result is not None
@@ -158,7 +116,7 @@ class TestBehavioralEvalService:
         # 1 scenario x 3 runs = 3 runner calls
         assert runner.run.call_count == 3
         assert judge.judge.call_count == 3
-        assert repo.create_behavioral_run.call_count == 3
+        assert len(result.pending_runs) == 3
         assert result.run_count == 3
         assert result.scenario_count == 1
 
@@ -167,9 +125,8 @@ class TestBehavioralEvalService:
         skill = _make_skill(behavioral_eval=BehavioralEvalApplicability.NOT_APPLICABLE)
         runner = _mock_runner()
         judge = _mock_judge()
-        repo = _mock_repo(uuid.uuid4())
 
-        service = BehavioralEvalService(runner, judge, repo)
+        service = BehavioralEvalService(runner, judge)
         result = await service.run_evaluation(skill, uuid.uuid4())
 
         assert result is None
@@ -194,9 +151,8 @@ class TestBehavioralEvalService:
         )
         runner = _mock_runner()
         judge = _mock_judge()
-        repo = _mock_repo(uuid.uuid4())
 
-        service = BehavioralEvalService(runner, judge, repo)
+        service = BehavioralEvalService(runner, judge)
         result = await service.run_evaluation(skill, uuid.uuid4())
 
         assert result is None
@@ -215,9 +171,8 @@ class TestBehavioralEvalService:
         )
         runner = _mock_runner()
         judge = _mock_judge()
-        repo = _mock_repo(uuid.uuid4())
 
-        service = BehavioralEvalService(runner, judge, repo, runs_per_scenario=1)
+        service = BehavioralEvalService(runner, judge, runs_per_scenario=1)
         result = await service.run_evaluation(skill, uuid.uuid4())
 
         assert result is not None
@@ -239,9 +194,8 @@ class TestBehavioralEvalService:
         )
         runner = _mock_runner()
         judge = _mock_judge()
-        repo = _mock_repo(uuid.uuid4())
 
-        service = BehavioralEvalService(runner, judge, repo, runs_per_scenario=1)
+        service = BehavioralEvalService(runner, judge, runs_per_scenario=1)
         result = await service.run_evaluation(skill, uuid.uuid4())
 
         assert result is not None
@@ -251,7 +205,6 @@ class TestBehavioralEvalService:
         """Aggregate uses median (not mean) for outlier resistance."""
         eval_job_id = uuid.uuid4()
         runner = _mock_runner()
-        repo = _mock_repo(eval_job_id)
 
         # Create judge that returns different scores on each call
         scores = [
@@ -260,41 +213,39 @@ class TestBehavioralEvalService:
             _make_judge_score(outcome_quality=0.8, completeness=0.8, efficiency=0.8),
         ]
         judge = AsyncMock()
-        judge._model_id = "test-judge"
+        judge.model_id = "test-judge"
         judge.judge = AsyncMock(side_effect=[(s, 50) for s in scores])
 
         skill = _make_skill()
 
-        service = BehavioralEvalService(runner, judge, repo, runs_per_scenario=3)
+        service = BehavioralEvalService(runner, judge, runs_per_scenario=3)
         result = await service.run_evaluation(skill, eval_job_id)
 
         assert result is not None
         # Scores: 0.9, 0.1, 0.8 -> median = 0.8
         assert result.behavioral_score == 0.8
 
-    async def test_per_run_results_returned(self) -> None:
-        """Per-run BehavioralRunResults are included in result."""
+    async def test_pending_runs_returned(self) -> None:
+        """Pending run data is included in result for later persistence."""
         eval_job_id = uuid.uuid4()
         runner = _mock_runner()
         judge = _mock_judge()
-        repo = _mock_repo(eval_job_id)
 
         skill = _make_skill()
 
-        service = BehavioralEvalService(runner, judge, repo, runs_per_scenario=2)
+        service = BehavioralEvalService(runner, judge, runs_per_scenario=2)
         result = await service.run_evaluation(skill, eval_job_id)
 
         assert result is not None
-        assert len(result.per_run) == 2
-        for run in result.per_run:
-            assert isinstance(run, BehavioralRunResult)
+        assert len(result.pending_runs) == 2
+        for run in result.pending_runs:
+            assert isinstance(run, PendingBehavioralRun)
 
     async def test_multiple_scenarios(self) -> None:
         """Multiple scenarios each get N runs."""
         eval_job_id = uuid.uuid4()
         runner = _mock_runner()
         judge = _mock_judge()
-        repo = _mock_repo(eval_job_id)
 
         skill = _make_skill(
             scenarios=[
@@ -311,7 +262,7 @@ class TestBehavioralEvalService:
             ]
         )
 
-        service = BehavioralEvalService(runner, judge, repo, runs_per_scenario=2)
+        service = BehavioralEvalService(runner, judge, runs_per_scenario=2)
         result = await service.run_evaluation(skill, eval_job_id)
 
         assert result is not None
@@ -323,7 +274,6 @@ class TestBehavioralEvalService:
         """Variance is computed as stdev across all composite scores."""
         eval_job_id = uuid.uuid4()
         runner = _mock_runner()
-        repo = _mock_repo(eval_job_id)
 
         # Different scores -> non-zero variance
         scores = [
@@ -331,12 +281,12 @@ class TestBehavioralEvalService:
             _make_judge_score(outcome_quality=0.5, completeness=0.5, efficiency=0.5),
         ]
         judge = AsyncMock()
-        judge._model_id = "test-judge"
+        judge.model_id = "test-judge"
         judge.judge = AsyncMock(side_effect=[(s, 50) for s in scores])
 
         skill = _make_skill()
 
-        service = BehavioralEvalService(runner, judge, repo, runs_per_scenario=2)
+        service = BehavioralEvalService(runner, judge, runs_per_scenario=2)
         result = await service.run_evaluation(skill, eval_job_id)
 
         assert result is not None

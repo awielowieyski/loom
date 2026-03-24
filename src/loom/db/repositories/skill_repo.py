@@ -475,12 +475,14 @@ class SkillRepo:
         )
 
     async def get_stale_candidates(self, staleness_window_days: int) -> list[uuid_mod.UUID]:
-        """Find skills with 0 resolution_count, not already stale, older than window."""
+        """Find skills with 0 usage reports in the time window, not already stale."""
         rows = await self._conn.fetch(
-            """SELECT id FROM skills
-               WHERE resolution_count = 0
-                 AND stale_since IS NULL
-                 AND created_at < now() - ($1 || ' days')::interval""",
+            """SELECT s.id FROM skills s
+               LEFT JOIN usage_reports ur ON ur.skill_id = s.id
+                 AND ur.created_at >= now() - ($1 || ' days')::interval
+               WHERE ur.id IS NULL
+                 AND s.stale_since IS NULL
+                 AND s.created_at < now() - ($1 || ' days')::interval""",
             str(staleness_window_days),
         )
         return [row["id"] for row in rows]
