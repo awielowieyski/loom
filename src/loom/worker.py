@@ -65,6 +65,30 @@ async def startup(ctx: dict[str, Any]) -> None:
     ctx["eval_repo_factory"] = lambda conn: EvalRepo(conn)
     ctx["usage_repo_factory"] = lambda conn: UsageRepo(conn)
 
+    # M4: Behavioral evaluation services
+    from loom.db.repositories.behavioral_eval_repo import BehavioralEvalRepo
+    from loom.services.behavioral_judge import BehavioralJudge
+    from loom.services.behavioral_runner import BehavioralRunner
+
+    runner_model_id = settings.pipeline.runner_model or settings.llm.model
+    judge_model_id = settings.pipeline.judge_model or settings.llm.model
+
+    behavioral_runner = BehavioralRunner(
+        agent_factory=agent_factory,
+        prompt_registry=prompt_registry,
+        model_id=runner_model_id,
+    )
+    behavioral_judge = BehavioralJudge(
+        agent_factory=agent_factory,
+        prompt_registry=prompt_registry,
+        model_id=judge_model_id,
+    )
+
+    ctx["behavioral_runner"] = behavioral_runner
+    ctx["behavioral_judge"] = behavioral_judge
+    ctx["behavioral_eval_repo_factory"] = lambda conn: BehavioralEvalRepo(conn)
+    ctx["behavioral_runs_per_scenario"] = settings.pipeline.behavioral_runs_per_scenario
+
     # Create arq Redis pool for job enqueueing (used by cron jobs)
     from arq import create_pool as create_arq_pool
 
@@ -182,6 +206,17 @@ async def run_eval_job(ctx: dict[str, Any], skill_id: str, trigger: str) -> dict
             latest_eval_job_id=job.id,
         )
 
+    # Dispatch behavioral evaluation if the M2 pipeline passed
+    if result.passed:
+        redis = ctx.get("redis")
+        if redis:
+            await redis.enqueue_job(
+                "run_behavioral_eval_job",
+                skill_id,
+                str(job.id),
+                trigger,
+            )
+
     logger.info(
         "Eval job %s completed for skill %s — score=%.2f, passed=%s",
         job.id,
@@ -193,6 +228,73 @@ async def run_eval_job(ctx: dict[str, Any], skill_id: str, trigger: str) -> dict
         "job_id": str(job.id),
         "passed": result.passed,
         "composite_score": result.composite_score,
+    }
+
+
+async def run_behavioral_eval_job(
+    ctx: dict[str, Any], skill_id: str, eval_job_id: str, trigger: str
+) -> dict[str, Any]:
+    """Run behavioral evaluation as a post-pipeline phase.
+
+    Dispatched after M2's 5-phase pipeline passes. Runs the Runner-Judge
+    loop for each scenario and persists results.
+    """
+    import uuid
+
+    from loom.services.behavioral_eval_service import BehavioralEvalService
+
+    pool = ctx["pool"]
+
+    # Fetch skill
+    async with pool.acquire() as conn:
+        skill_repo = ctx["skill_repo_factory"](conn)
+        skill = await skill_repo.get_by_id(uuid.UUID(skill_id))
+        if skill is None:
+            logger.error("Skill %s not found for behavioral eval", skill_id)
+            return {"error": f"Skill {skill_id} not found"}
+
+    # Run behavioral evaluation
+    async with pool.acquire() as conn:
+        behavioral_eval_repo = ctx["behavioral_eval_repo_factory"](conn)
+        service = BehavioralEvalService(
+            runner=ctx["behavioral_runner"],
+            judge=ctx["behavioral_judge"],
+            behavioral_eval_repo=behavioral_eval_repo,
+            runs_per_scenario=ctx["behavioral_runs_per_scenario"],
+        )
+
+        eval_result = await service.run_evaluation(skill, uuid.UUID(eval_job_id))
+
+    if eval_result is None:
+        logger.info("Behavioral eval not applicable for skill %s", skill_id)
+        return {"job_id": eval_job_id, "behavioral_score": None, "run_count": 0}
+
+    # Persist aggregate score
+    async with pool.acquire() as conn:
+        eval_repo = ctx["eval_repo_factory"](conn)
+        skill_repo = ctx["skill_repo_factory"](conn)
+
+        await eval_repo.update_eval_job(
+            uuid.UUID(eval_job_id),
+            behavioral_score=eval_result.behavioral_score,
+        )
+        await skill_repo.update_eval_fields(
+            skill.id,
+            eval_status="completed",
+            composite_score=skill.composite_score,
+            latest_eval_job_id=uuid.UUID(eval_job_id),
+        )
+
+    logger.info(
+        "Behavioral eval completed for skill %s — score=%.2f, runs=%d",
+        skill_id,
+        eval_result.behavioral_score,
+        eval_result.run_count,
+    )
+    return {
+        "job_id": eval_job_id,
+        "behavioral_score": eval_result.behavioral_score,
+        "run_count": eval_result.run_count,
     }
 
 
@@ -348,12 +450,30 @@ async def detect_usage_signals(ctx: dict[str, Any]) -> dict[str, Any]:
                 await redis.enqueue_job("run_eval_job", str(agg.skill_id), "usage_signal")
                 re_evals_triggered += 1
 
+    # --- Staleness detection ---
+    stale_marked = 0
+    staleness_days: int = settings.pipeline.staleness_window_days
+    async with pool.acquire() as conn:
+        skill_repo = ctx["skill_repo_factory"](conn)
+        stale_ids = await skill_repo.get_stale_candidates(staleness_days)
+        for sid in stale_ids:
+            await skill_repo.mark_stale(sid)
+            stale_marked += 1
+
+    if stale_marked:
+        logger.info("detect_usage_signals: marked %d skills as stale", stale_marked)
+
     logger.info(
-        "detect_usage_signals: %d alerts, %d re-evaluations triggered",
+        "detect_usage_signals: %d alerts, %d re-evaluations triggered, %d stale",
         alerts,
         re_evals_triggered,
+        stale_marked,
     )
-    return {"alerts": alerts, "re_evals_triggered": re_evals_triggered}
+    return {
+        "alerts": alerts,
+        "re_evals_triggered": re_evals_triggered,
+        "stale_marked": stale_marked,
+    }
 
 
 def _redis_settings_from_url(url: str) -> RedisSettings:
@@ -375,7 +495,7 @@ class WorkerSettings:
     Started with: ``uv run arq loom.worker.WorkerSettings``
     """
 
-    functions = [run_eval_job]
+    functions = [run_eval_job, run_behavioral_eval_job]
     cron_jobs = [
         cron(scheduled_reeval, weekday={6}, hour={3}, minute={17}),
         cron(aggregate_usage, hour=None, minute={17}),  # every hour at :17
