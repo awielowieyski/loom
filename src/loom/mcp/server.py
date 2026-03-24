@@ -2,13 +2,15 @@
 
 import asyncio
 import atexit
+import uuid as uuid_mod
 from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
 
 from loom.models.capability import CapabilitySummary
-from loom.models.common import CostProfile, TrustTier
+from loom.models.common import CostProfile, TrustTier, UsageOutcome
 from loom.models.resolution import ResolutionContext
+from loom.models.usage import UsageReportCreate
 from loom.services.container import ServiceContainer, close_container, create_container
 
 mcp: FastMCP = FastMCP(
@@ -81,15 +83,73 @@ async def resolve(
             # Skill-only: use original DiscoveryService
             discovery = container.discovery_service_factory(skill_repo)
             skill_result = await discovery.resolve(task_description, context=resolution_context)
-            return skill_result.model_dump()
+            result = skill_result.model_dump()
+        else:
+            # "any" or "capability": use UnifiedResolver
+            capability_repo = container.capability_repo_factory(conn)
+            unified = container.unified_resolver_factory(skill_repo, capability_repo)
+            unified_result = await unified.resolve(
+                task_description, context=resolution_context, type_filter=type
+            )
+            result = unified_result.model_dump()
 
-        # "any" or "capability": use UnifiedResolver
-        capability_repo = container.capability_repo_factory(conn)
-        unified = container.unified_resolver_factory(skill_repo, capability_repo)
-        unified_result = await unified.resolve(
-            task_description, context=resolution_context, type_filter=type
-        )
-    return unified_result.model_dump()
+        # Enrich with M4 fields if a skill was resolved
+        slug = result.get("slug")
+        if slug:
+            skill = await skill_repo.get_by_slug(slug)
+            if skill is not None:
+                await skill_repo.increment_resolution_count(skill.id)
+                result["deprecated"] = skill.deprecated_at is not None
+                result["successor"] = (
+                    {"slug": skill.successor_slug} if skill.successor_slug else None
+                )
+                result["stale"] = skill.stale_since is not None
+                result["behavioral_score"] = skill.behavioral_score
+
+                # Fetch 30d usage success rate if available
+                usage_repo = container.usage_repo_factory(conn)
+                agg = await usage_repo.get_aggregate_for_skill(skill.id, "30d")
+                result["usage_success_rate"] = agg.success_rate if agg else None
+
+    return result
+
+
+@mcp.tool()
+async def report_usage(
+    skill_slug: str,
+    skill_version: str,
+    outcome: str,
+    runtime_ms: int | None = None,
+    context_hash: str | None = None,
+    failure_reason: str | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    """Report usage outcome for a skill. Same semantics as the REST endpoint."""
+    container = await _get_container()
+
+    if idempotency_key is None:
+        idempotency_key = str(uuid_mod.uuid4())
+
+    report = UsageReportCreate(
+        skill_slug=skill_slug,
+        skill_version=skill_version,
+        outcome=UsageOutcome(outcome),
+        runtime_ms=runtime_ms,
+        context_hash=context_hash,
+        failure_reason=failure_reason,
+        idempotency_key=idempotency_key,
+    )
+
+    async with container.pool.acquire() as conn:
+        usage_repo = container.usage_repo_factory(conn)
+        skill_repo = container.skill_repo_factory(conn)
+        svc = container.usage_service_factory(usage_repo, skill_repo)
+        try:
+            result = await svc.report_usage(report)
+        except ValueError as exc:
+            return {"error": "not_found", "message": str(exc)}
+
+    return result.model_dump()
 
 
 @mcp.tool()
