@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import ReactFlow, { Background, Controls, MiniMap } from '@xyflow/react'
+import { ReactFlow, Background, Controls, MiniMap } from '@xyflow/react'
 import type { Node, Edge } from '@xyflow/react'
 import dagre from 'dagre'
 import '@xyflow/react/dist/style.css'

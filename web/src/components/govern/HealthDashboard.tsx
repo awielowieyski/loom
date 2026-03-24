@@ -62,7 +62,7 @@ export function HealthDashboard() {
           icon={<Activity className="h-5 w-5" />}
         />
       </div>
-      <div className="flex items-center gap-6">
+      <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-6">
         <div className="relative">
           <ProgressRing
             value={data.behavioral_eval_coverage}

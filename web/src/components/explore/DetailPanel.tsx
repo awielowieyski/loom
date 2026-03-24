@@ -55,7 +55,7 @@ export function DetailPanel({ node, onClose }: DetailPanelProps) {
           animate={{ x: 0 }}
           exit={{ x: '100%' }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="fixed right-0 top-0 h-full w-96 bg-background border-l shadow-xl z-40 overflow-y-auto"
+          className="fixed right-0 top-0 h-full w-full sm:w-96 bg-background border-l shadow-xl z-40 overflow-y-auto"
         >
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b">

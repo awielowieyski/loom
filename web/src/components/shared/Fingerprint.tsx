@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { formatScore, capitalize } from '@/lib/format'
 import {
@@ -92,8 +93,8 @@ export function Fingerprint({
         />
       ))}
 
-      {/* Filled polygon */}
-      <path
+      {/* Filled polygon with smooth transitions */}
+      <motion.path
         d={path}
         fill="oklch(0.546 0.245 262.881)"
         fillOpacity={fillOpacity}
@@ -101,6 +102,9 @@ export function Fingerprint({
         strokeWidth={size === 'thumbnail' ? 0.5 : 1.5}
         strokeOpacity={0.8}
         filter={behavioralGlow > 0 ? `url(#glow-${size})` : undefined}
+        initial={false}
+        animate={{ d: path }}
+        transition={{ duration: 0.4, ease: 'easeOut' }}
       />
 
       {/* Hero: interactive hover labels */}

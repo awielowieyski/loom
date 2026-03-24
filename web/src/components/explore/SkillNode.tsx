@@ -37,6 +37,14 @@ export function SkillNode({ node, onHover, onClick, dimmed }: SkillNodeProps) {
       onMouseLeave={() => onHover(null, {} as React.MouseEvent)}
       onClick={() => onClick(node)}
     >
+      {/* Invisible hit area for touch-friendly tap targets (min 22px radius = 44px diameter) */}
+      <circle
+        cx={node.x}
+        cy={node.y}
+        r={Math.max(r, 22)}
+        fill="transparent"
+        stroke="none"
+      />
       {node.type === 'skill' ? (
         <circle
           cx={node.x}

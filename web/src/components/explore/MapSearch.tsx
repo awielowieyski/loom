@@ -7,7 +7,7 @@ interface MapSearchProps {
 
 export function MapSearch({ value, onChange }: MapSearchProps) {
   return (
-    <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-background/90 backdrop-blur-sm border rounded-lg px-3 py-2 shadow-sm w-64">
+    <div className="absolute top-4 left-4 right-4 sm:right-auto z-10 flex items-center gap-2 bg-background/90 backdrop-blur-sm border rounded-lg px-3 py-2 shadow-sm sm:w-64">
       <Search className="h-4 w-4 text-muted-foreground shrink-0" />
       <input
         type="text"

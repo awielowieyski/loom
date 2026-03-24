@@ -108,7 +108,7 @@ export function ReviewInterface({ item, onComplete, className }: ReviewInterface
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             onClick={() => handleSubmit('approve')}

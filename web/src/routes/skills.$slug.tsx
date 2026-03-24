@@ -41,7 +41,7 @@ function SkillInspect() {
   }
 
   return (
-    <div className="space-y-10">
+    <div className="max-w-4xl mx-auto space-y-8 md:space-y-10">
       <SkillDetail slug={slug} />
 
       <section className="space-y-3">
@@ -49,15 +49,17 @@ function SkillInspect() {
         <WhyThisWorks />
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Trust Journey</h2>
-        <TrustJourney slug={slug} />
-      </section>
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-6">
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">Trust Journey</h2>
+          <TrustJourney slug={slug} />
+        </section>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Versions</h2>
-        <VersionTimeline slug={slug} />
-      </section>
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">Versions</h2>
+          <VersionTimeline slug={slug} />
+        </section>
+      </div>
     </div>
   )
 }

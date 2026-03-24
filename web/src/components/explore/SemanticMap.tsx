@@ -161,7 +161,7 @@ export function SemanticMap({ searchFilter, onHoverNode, onClickNode }: Semantic
     <svg
       ref={svgRef}
       className="w-full h-full bg-background"
-      style={{ cursor: 'grab' }}
+      style={{ cursor: 'grab', touchAction: 'none' }}
     >
       <g ref={gRef}>
         {/* Layer 1: Edges */}
