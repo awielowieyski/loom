@@ -1,8 +1,8 @@
 import { apiGet, apiPost } from './client'
 import type {
   StatsOverview,
-  EvalTrendPoint,
-  UsageHeatmapEntry,
+  EvalTrendsResponse,
+  UsageHeatmapResponse,
   GovernanceQueueItem,
   GovernanceReviewSubmission,
   EmbeddingMapPoint,
@@ -13,16 +13,16 @@ export function getStatsOverview() {
   return apiGet<StatsOverview>('/stats/overview')
 }
 
-export function getEvalTrends(params?: { days?: number }) {
-  return apiGet<EvalTrendPoint[]>('/stats/eval-trends', params)
+export function getEvalTrends(params?: { category?: string; weeks?: number }) {
+  return apiGet<EvalTrendsResponse>('/stats/eval-trends', params)
 }
 
-export function getUsageHeatmap(params?: { limit?: number }) {
-  return apiGet<UsageHeatmapEntry[]>('/stats/usage-heatmap', params)
+export function getUsageHeatmap(params?: { period_type?: string; periods?: number }) {
+  return apiGet<UsageHeatmapResponse>('/stats/usage-heatmap', params)
 }
 
-export function getGovernanceQueue() {
-  return apiGet<GovernanceQueueItem[]>('/governance/queue')
+export function getGovernanceQueue(params?: { reason?: string; limit?: number; offset?: number }) {
+  return apiGet<GovernanceQueueItem[]>('/governance/queue', params)
 }
 
 export function submitReview(submission: GovernanceReviewSubmission) {

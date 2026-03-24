@@ -17,7 +17,9 @@ from loom.services.capability_discovery import CapabilityDiscoveryService
 from loom.services.capability_registry import CapabilityRegistryService
 from loom.services.container import ServiceContainer
 from loom.services.discovery import DiscoveryService
+from loom.services.governance_service import GovernanceService
 from loom.services.registry import RegistryService
+from loom.services.stats_service import StatsService
 from loom.services.unified_resolver import UnifiedResolver
 
 
@@ -119,3 +121,15 @@ def get_activity_feed_service(
     conn: Annotated[asyncpg.Connection, Depends(get_conn)],
 ) -> ActivityFeedService:
     return ActivityFeedService(conn)
+
+
+def get_stats_service(
+    conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+) -> StatsService:
+    return StatsService(conn)
+
+
+def get_governance_service(
+    conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+) -> GovernanceService:
+    return GovernanceService(conn)

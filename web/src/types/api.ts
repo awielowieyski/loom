@@ -380,43 +380,58 @@ export interface ActivityFeedResponse {
 // ---- Stats / Dashboard ----
 
 export interface StatsOverview {
-  total_skills: number
-  total_capabilities: number
-  total_resolutions: number
-  avg_composite_score: number
-  trust_distribution: Record<TrustTier, number>
+  skill_counts: Record<TrustTier, number>
+  capability_count: number
+  behavioral_eval_coverage: number
+  stale_count: number
+  deprecated_count: number
+  total_resolutions_7d: number
+  total_resolutions_30d: number
 }
 
-export interface EvalTrendPoint {
-  date: string
-  avg_score: number
-  count: number
+export interface EvalTrendWindow {
+  week: string
+  p25: number | null
+  p50: number | null
+  p75: number | null
+  behavioral_p50: number | null
+  eval_count: number
 }
 
-export interface UsageHeatmapEntry {
-  slug: string
-  name: string
-  count: number
-  success_rate: number
+export interface EvalTrendsResponse {
+  weeks_requested: number
+  category: string | null
+  windows: EvalTrendWindow[]
 }
+
+export interface UsageHeatmapResponse {
+  period_type: string
+  categories: string[]
+  periods: string[]
+  data: number[][]
+}
+
+export type GovernanceReason = 'injection_flag' | 'low_confidence' | 'recent_amendment'
 
 export interface GovernanceQueueItem {
   id: string
   skill_id: string
   slug: string
   name: string
-  type: 'trust_promotion' | 'deprecation_review' | 'eval_failure'
-  reason: string
-  created_at: string
-  current_tier: TrustTier
-  suggested_tier?: TrustTier
-  composite_score?: number
+  reason: GovernanceReason
+  submitted_at: string | null
+  eval_summary: {
+    composite_score?: number | null
+    dimension_scores?: Record<string, number> | null
+    injection_flagged?: boolean
+    changelog?: string | null
+  }
 }
 
 export interface GovernanceReviewSubmission {
-  item_id: string
-  action: 'approve' | 'reject' | 'defer'
-  reason?: string
+  queue_item_id: string
+  decision: 'approve' | 'reject' | 'request_changes'
+  note: string
 }
 
 export interface EmbeddingMapPoint {
@@ -465,4 +480,14 @@ export interface TimelineEntry {
   changelog: string | null
   composite_score: number | null
   eval_status: string | null
+}
+
+export interface SkillTimelineEvent {
+  timestamp: string
+  event_type: 'submitted' | 'eval_completed' | 'promoted' | 'demoted' | 'version'
+  detail: string
+}
+
+export interface SkillTimelineResponse {
+  events: SkillTimelineEvent[]
 }

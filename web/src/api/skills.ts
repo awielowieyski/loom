@@ -5,6 +5,7 @@ import type {
   UsageStats,
   BehavioralEvalResult,
   TimelineEntry,
+  SkillTimelineResponse,
 } from '@/types/api'
 
 export function listSkills(params?: {
@@ -33,5 +34,5 @@ export function getSkillBehavioral(slug: string) {
 }
 
 export function getSkillTimeline(slug: string) {
-  return apiGet<TimelineEntry[]>(`/skills/${slug}/timeline`)
+  return apiGet<SkillTimelineResponse>(`/skills/${slug}/timeline`)
 }

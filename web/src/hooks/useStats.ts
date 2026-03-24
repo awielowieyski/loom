@@ -15,24 +15,24 @@ export function useStatsOverview() {
   })
 }
 
-export function useEvalTrends(days?: number) {
+export function useEvalTrends(params?: { category?: string; weeks?: number }) {
   return useQuery({
-    queryKey: ['stats', 'eval-trends', days],
-    queryFn: () => getEvalTrends({ days }),
+    queryKey: ['stats', 'eval-trends', params?.category, params?.weeks],
+    queryFn: () => getEvalTrends(params),
   })
 }
 
-export function useUsageHeatmap(limit?: number) {
+export function useUsageHeatmap(params?: { period_type?: string; periods?: number }) {
   return useQuery({
-    queryKey: ['stats', 'usage-heatmap', limit],
-    queryFn: () => getUsageHeatmap({ limit }),
+    queryKey: ['stats', 'usage-heatmap', params?.period_type, params?.periods],
+    queryFn: () => getUsageHeatmap(params),
   })
 }
 
-export function useGovernanceQueue() {
+export function useGovernanceQueue(params?: { reason?: string }) {
   return useQuery({
-    queryKey: ['governance', 'queue'],
-    queryFn: getGovernanceQueue,
+    queryKey: ['governance', 'queue', params?.reason],
+    queryFn: () => getGovernanceQueue(params),
   })
 }
 
