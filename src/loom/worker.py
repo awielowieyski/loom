@@ -291,6 +291,71 @@ async def aggregate_usage(ctx: dict[str, Any]) -> dict[str, Any]:
     return {"windows_processed": windows_processed, "skills_updated": skills_updated}
 
 
+async def detect_usage_signals(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Hourly cron: check usage aggregates for threshold violations and trigger actions."""
+    pool = ctx["pool"]
+    settings: Any = ctx["settings"]
+    failure_rate_trigger: float = settings.pipeline.usage_failure_rate_trigger
+    success_drop_trigger: float = settings.pipeline.usage_success_rate_drop_trigger
+
+    alerts = 0
+    re_evals_triggered = 0
+    redis = ctx.get("redis")
+
+    async with pool.acquire() as conn:
+        usage_repo = ctx["usage_repo_factory"](conn)
+
+        # Get 7d aggregates with at least 10 total reports
+        aggregates_7d = await usage_repo.get_aggregates_above_threshold("7d", 10)
+
+        for agg in aggregates_7d:
+            total = agg.success_count + agg.partial_count + agg.failure_count
+            if total == 0:
+                continue
+
+            failure_rate = agg.failure_count / total
+            should_reeval = False
+
+            # Check high failure rate
+            if failure_rate > failure_rate_trigger:
+                logger.warning(
+                    "Signal: skill %s has %.0f%% failure rate (threshold %.0f%%)",
+                    agg.skill_id,
+                    failure_rate * 100,
+                    failure_rate_trigger * 100,
+                )
+                alerts += 1
+                should_reeval = True
+
+            # Check success rate drop vs 30d
+            agg_30d = await usage_repo.get_aggregate_for_skill(agg.skill_id, "30d")
+            if (
+                agg_30d is not None
+                and agg_30d.success_rate is not None
+                and agg.success_rate is not None
+                and (agg_30d.success_rate - agg.success_rate) > success_drop_trigger
+            ):
+                logger.warning(
+                    "Signal: skill %s success rate dropped %.0f%% -> %.0f%%",
+                    agg.skill_id,
+                    agg_30d.success_rate * 100,
+                    agg.success_rate * 100,
+                )
+                alerts += 1
+                should_reeval = True
+
+            if should_reeval and redis:
+                await redis.enqueue_job("run_eval_job", str(agg.skill_id), "usage_signal")
+                re_evals_triggered += 1
+
+    logger.info(
+        "detect_usage_signals: %d alerts, %d re-evaluations triggered",
+        alerts,
+        re_evals_triggered,
+    )
+    return {"alerts": alerts, "re_evals_triggered": re_evals_triggered}
+
+
 def _redis_settings_from_url(url: str) -> RedisSettings:
     """Parse a redis:// URL into arq RedisSettings."""
     from urllib.parse import urlparse
@@ -314,6 +379,7 @@ class WorkerSettings:
     cron_jobs = [
         cron(scheduled_reeval, weekday={6}, hour={3}, minute={17}),
         cron(aggregate_usage, hour=None, minute={17}),  # every hour at :17
+        cron(detect_usage_signals, hour=None, minute={47}),  # every hour at :47
     ]
     on_startup = startup
     on_shutdown = shutdown

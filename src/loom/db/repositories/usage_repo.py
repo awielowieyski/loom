@@ -198,3 +198,90 @@ class UsageRepo:
             since,
         )
         return {row["outcome"]: row["cnt"] for row in rows}
+
+    async def get_distinct_skill_versions_in_window(
+        self,
+        since: datetime,
+    ) -> list[tuple[uuid_mod.UUID, str]]:
+        """Return distinct (skill_id, skill_version) pairs with reports since `since`."""
+        rows = await self._conn.fetch(
+            """
+            SELECT DISTINCT skill_id, skill_version FROM usage_reports
+            WHERE created_at >= $1
+            """,
+            since,
+        )
+        return [(row["skill_id"], row["skill_version"]) for row in rows]
+
+    async def aggregate_reports_in_window(
+        self,
+        skill_id: uuid_mod.UUID,
+        skill_version: str,
+        since: datetime,
+    ) -> dict[str, int | float | None]:
+        """Return outcome counts and avg runtime for a skill/version pair in a window."""
+        rows = await self._conn.fetch(
+            """
+            SELECT outcome, COUNT(*)::int AS cnt,
+                   AVG(runtime_ms)::float AS avg_ms
+            FROM usage_reports
+            WHERE skill_id = $1 AND skill_version = $2 AND created_at >= $3
+            GROUP BY outcome
+            """,
+            skill_id,
+            skill_version,
+            since,
+        )
+        result: dict[str, int | float | None] = {
+            "success": 0,
+            "partial": 0,
+            "failure": 0,
+            "avg_runtime_ms": None,
+        }
+        total_runtime = 0.0
+        total_with_runtime = 0
+        for row in rows:
+            result[row["outcome"]] = row["cnt"]
+            if row["avg_ms"] is not None:
+                total_runtime += row["avg_ms"] * row["cnt"]
+                total_with_runtime += row["cnt"]
+        if total_with_runtime > 0:
+            result["avg_runtime_ms"] = total_runtime / total_with_runtime
+        return result
+
+    async def get_aggregates_above_threshold(
+        self,
+        window_type: str,
+        min_total: int,
+    ) -> list[UsageAggregate]:
+        """Return aggregates where total count >= min_total for a given window type."""
+        rows = await self._conn.fetch(
+            f"""
+            SELECT {_USAGE_AGGREGATE_COLUMNS} FROM usage_aggregates
+            WHERE window_type = $1
+            AND (success_count + partial_count + failure_count) >= $2
+            """,
+            window_type,
+            min_total,
+        )
+        return [_row_to_usage_aggregate(row) for row in rows]
+
+    async def get_aggregate_for_skill(
+        self,
+        skill_id: uuid_mod.UUID,
+        window_type: str,
+    ) -> UsageAggregate | None:
+        """Return a single aggregate for a skill/window combination."""
+        row = await self._conn.fetchrow(
+            f"""
+            SELECT {_USAGE_AGGREGATE_COLUMNS} FROM usage_aggregates
+            WHERE skill_id = $1 AND window_type = $2
+            ORDER BY computed_at DESC
+            LIMIT 1
+            """,
+            skill_id,
+            window_type,
+        )
+        if row is None:
+            return None
+        return _row_to_usage_aggregate(row)
