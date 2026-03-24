@@ -376,6 +376,35 @@ class SkillRepo:
         )
         return [_row_to_summary(row) for row in rows]
 
+    async def get_reeval_candidates(self, trust_tiers: list[str], limit: int) -> list[Skill]:
+        """Return skills ordered by oldest last_eval_at, limited to N.
+
+        Skills that have never been evaluated (last_eval_at IS NULL) are
+        returned first, followed by skills with the oldest evaluation.
+        """
+        placeholders = ", ".join(f"${i + 1}" for i in range(len(trust_tiers)))
+        params: list[Any] = [*trust_tiers, limit]
+        rows = await self._conn.fetch(
+            f"""
+            SELECT {_SKILL_COLUMNS}
+            FROM skills
+            WHERE trust_tier IN ({placeholders})
+            ORDER BY last_eval_at ASC NULLS FIRST
+            LIMIT ${len(params)}
+            """,  # noqa: S608
+            *params,
+        )
+        return [_row_to_skill(row) for row in rows]
+
+    async def count_by_trust_tiers(self, trust_tiers: list[str]) -> int:
+        """Count skills in the given trust tiers."""
+        placeholders = ", ".join(f"${i + 1}" for i in range(len(trust_tiers)))
+        row = await self._conn.fetchrow(
+            f"SELECT count(*) as cnt FROM skills WHERE trust_tier IN ({placeholders})",  # noqa: S608
+            *trust_tiers,
+        )
+        return int(row["cnt"]) if row else 0
+
     async def update_eval_fields(
         self,
         skill_id: uuid_mod.UUID,
@@ -396,3 +425,45 @@ class SkillRepo:
             latest_eval_job_id,
             skill_id,
         )
+
+    # --- M4: Living registry lifecycle methods ---
+
+    async def increment_resolution_count(self, skill_id: uuid_mod.UUID) -> None:
+        """Atomically increment the resolution_count for a skill."""
+        await self._conn.execute(
+            "UPDATE skills SET resolution_count = resolution_count + 1 WHERE id = $1",
+            skill_id,
+        )
+
+    async def mark_stale(self, skill_id: uuid_mod.UUID) -> None:
+        """Set stale_since to now() for a skill that isn't already stale."""
+        await self._conn.execute(
+            "UPDATE skills SET stale_since = now() WHERE id = $1 AND stale_since IS NULL",
+            skill_id,
+        )
+
+    async def clear_stale(self, skill_id: uuid_mod.UUID) -> None:
+        """Clear stale_since when a skill gets new usage."""
+        await self._conn.execute(
+            "UPDATE skills SET stale_since = NULL WHERE id = $1",
+            skill_id,
+        )
+
+    async def mark_deprecated(self, skill_id: uuid_mod.UUID, successor_slug: str | None) -> None:
+        """Set deprecated_at and successor_slug on a skill."""
+        await self._conn.execute(
+            "UPDATE skills SET deprecated_at = now(), successor_slug = $2 WHERE id = $1",
+            skill_id,
+            successor_slug,
+        )
+
+    async def get_stale_candidates(self, staleness_window_days: int) -> list[uuid_mod.UUID]:
+        """Find skills with 0 resolution_count, not already stale, older than window."""
+        rows = await self._conn.fetch(
+            """SELECT id FROM skills
+               WHERE resolution_count = 0
+                 AND stale_since IS NULL
+                 AND created_at < now() - ($1 || ' days')::interval""",
+            str(staleness_window_days),
+        )
+        return [row["id"] for row in rows]
