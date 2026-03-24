@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { ChevronDown, Clock, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -22,26 +22,23 @@ function formatTimestamp(ts: number): string {
   return `${days}d ago`
 }
 
-// Simple external store subscription for localStorage changes within same tab
-let historyVersion = 0
+// Simple event emitter for cross-component history updates
 const listeners = new Set<() => void>()
 
 export function notifyHistoryChange() {
-  historyVersion++
   listeners.forEach((l) => l())
 }
 
 function useHistory(): HistoryEntry[] {
-  const subscribe = useCallback((cb: () => void) => {
-    listeners.add(cb)
-    return () => listeners.delete(cb)
+  const [history, setHistory] = useState<HistoryEntry[]>(() => getHistory())
+
+  useEffect(() => {
+    const refresh = () => setHistory(getHistory())
+    listeners.add(refresh)
+    return () => { listeners.delete(refresh) }
   }, [])
-  const getSnapshot = useCallback(() => {
-    // Trigger re-read on version change
-    void historyVersion
-    return getHistory()
-  }, [])
-  return useSyncExternalStore(subscribe, getSnapshot, () => [])
+
+  return history
 }
 
 export function ResolutionHistory({ onSelect, className }: ResolutionHistoryProps) {

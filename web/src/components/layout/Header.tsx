@@ -75,10 +75,8 @@ export function Header() {
             {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
           <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger asChild className="md:hidden">
-              <Button variant="ghost" size="icon" aria-label="Open menu">
-                {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-              </Button>
+            <SheetTrigger className="md:hidden inline-flex items-center justify-center rounded-md h-9 w-9 hover:bg-accent hover:text-accent-foreground" aria-label="Open menu">
+              {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </SheetTrigger>
             <SheetContent side="left" className="w-64">
               <SheetTitle className="sr-only">Navigation</SheetTitle>
