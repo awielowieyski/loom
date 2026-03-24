@@ -7,15 +7,19 @@ from typing import TYPE_CHECKING
 
 from cachetools import TTLCache
 
+from loom.db.repositories.capability_repo import CapabilityRepo
 from loom.db.repositories.category_repo import CategoryRepo
 from loom.db.repositories.eval_repo import EvalRepo
 from loom.db.repositories.skill_repo import SkillRepo
+from loom.services.capability_discovery import CapabilityDiscoveryService
+from loom.services.capability_registry import CapabilityRegistryService
 from loom.services.discovery import DiscoveryService
 from loom.services.eval import EvalService
 from loom.services.prompt_registry import PromptRegistry
 from loom.services.registry import RegistryService
 from loom.services.score_aggregator import ScoreAggregator  # noqa: TC001
 from loom.services.static_analyser import StaticAnalyser  # noqa: TC001
+from loom.services.unified_resolver import UnifiedResolver
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -42,6 +46,12 @@ class ServiceContainer:
     eval_repo_factory: Callable[[asyncpg.Connection], EvalRepo]
     static_analyser: StaticAnalyser
     score_aggregator: ScoreAggregator
+
+    # M3: capability composition
+    capability_repo_factory: Callable[[asyncpg.Connection], CapabilityRepo]
+    capability_registry_factory: Callable[[CapabilityRepo, CategoryRepo], CapabilityRegistryService]
+    capability_discovery_factory: Callable[[CapabilityRepo, SkillRepo], CapabilityDiscoveryService]
+    unified_resolver_factory: Callable[[SkillRepo, CapabilityRepo], UnifiedResolver]
 
 
 async def create_container(settings: object) -> ServiceContainer:
@@ -85,6 +95,34 @@ async def create_container(settings: object) -> ServiceContainer:
     def _discovery(skill_repo: SkillRepo) -> DiscoveryService:
         return DiscoveryService(skill_repo=skill_repo, embedder=embedder, embed_cache=embed_cache)
 
+    def _capability_repo(conn: asyncpg.Connection) -> CapabilityRepo:
+        return CapabilityRepo(conn)
+
+    def _capability_registry(
+        cap_repo: CapabilityRepo, cat_repo: CategoryRepo
+    ) -> CapabilityRegistryService:
+        return CapabilityRegistryService(
+            capability_repo=cap_repo,
+            category_repo=cat_repo,
+            embedder=embedder,
+        )
+
+    def _capability_discovery(
+        cap_repo: CapabilityRepo, skill_repo: SkillRepo
+    ) -> CapabilityDiscoveryService:
+        return CapabilityDiscoveryService(
+            capability_repo=cap_repo,
+            skill_repo=skill_repo,
+            embedder=embedder,
+            embed_cache=embed_cache,
+        )
+
+    def _unified_resolver(skill_repo: SkillRepo, cap_repo: CapabilityRepo) -> UnifiedResolver:
+        return UnifiedResolver(
+            discovery_service=_discovery(skill_repo),
+            capability_discovery_service=_capability_discovery(cap_repo, skill_repo),
+        )
+
     return ServiceContainer(
         pool=pool,
         settings=settings,
@@ -97,6 +135,10 @@ async def create_container(settings: object) -> ServiceContainer:
         eval_repo_factory=_eval_repo,
         static_analyser=static_analyser,
         score_aggregator=score_aggregator,
+        capability_repo_factory=_capability_repo,
+        capability_registry_factory=_capability_registry,
+        capability_discovery_factory=_capability_discovery,
+        unified_resolver_factory=_unified_resolver,
     )
 
 

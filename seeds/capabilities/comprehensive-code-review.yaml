@@ -1,0 +1,98 @@
+slug: "comprehensive-code-review"
+name: "Comprehensive Code Review"
+description: "Full code review combining structural review, security analysis, accessibility compliance, and performance assessment into a single prioritised report"
+version: "1.0.0"
+scope: "community"
+trust_tier: "community"
+
+steps:
+  - skill_ref: "loom://review-pull-request"
+    role: "Perform structural code review of the pull request"
+    inputs:
+      diff: "$input.diff"
+    outputs:
+      structural_review: "$result"
+    required: true
+    data_classification: "internal"
+
+  - skill_ref: "loom://review-security"
+    role: "Analyse code changes for security vulnerabilities"
+    inputs:
+      diff: "$input.diff"
+      structural_context: "$steps[0].structural_review"
+    outputs:
+      security_review: "$result"
+    required: true
+    data_classification: "internal"
+
+  - skill_ref: "loom://review-accessibility"
+    role: "Assess code changes for accessibility compliance"
+    inputs:
+      diff: "$input.diff"
+    outputs:
+      accessibility_review: "$result"
+    required: true
+    data_classification: "internal"
+
+  - skill_ref: "loom://review-performance"
+    role: "Assess performance implications of code changes"
+    inputs:
+      diff: "$input.diff"
+    outputs:
+      performance_review: "$result"
+    required: true
+    data_classification: "internal"
+
+preconditions:
+  - "Pull request diff available"
+  - "Access to the repository source files"
+
+expected_outcome: "Combined review covering structure, security, accessibility, and performance with prioritised findings synthesised into a single report"
+
+data_flow:
+  - from_step: "review-pull-request"
+    to_step: "review-security"
+    classification: "internal"
+  - from_step: "review-pull-request"
+    to_step: "review-accessibility"
+    classification: "internal"
+  - from_step: "review-pull-request"
+    to_step: "review-performance"
+    classification: "internal"
+
+dependencies:
+  mcp_servers:
+    - uri: "filesystem"
+      required: true
+      scopes: ["read"]
+    - uri: "git"
+      required: true
+      scopes: ["read"]
+  apis: []
+  trust_requirements:
+    data_classification: "none"
+    network_access: false
+    privacy_impact:
+      external_data_sharing: false
+      input_logging: "none"
+      data_retention: "none"
+
+cost_profile: "low"
+cost_drivers: []
+estimated_duration: "slow"
+
+eval_spec:
+  scenarios:
+    - description: "Feature PR with cross-cutting concerns"
+      input_context: "PR adds a new public-facing form with database writes, touching 6 files"
+      success_criteria: "Review identifies at least one finding per dimension (structure, security, accessibility, performance); findings are prioritised by severity"
+    - description: "Refactoring PR with minimal risk"
+      input_context: "PR extracts utility functions without changing behaviour"
+      success_criteria: "Review confirms low risk across all dimensions; does not invent false positives; approves with brief rationale"
+  quality_dimensions:
+    - name: "coverage"
+      description: "All four review dimensions are represented in the final output"
+    - name: "prioritisation"
+      description: "Findings are ranked by severity across dimensions, not siloed"
+    - name: "actionability"
+      description: "Each blocking finding includes a suggested remediation"

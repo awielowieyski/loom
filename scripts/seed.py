@@ -27,8 +27,10 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 import json  # noqa: E402
 
+from loom.db.repositories.capability_repo import CapabilityRepo  # noqa: E402
 from loom.db.repositories.category_repo import CategoryRepo  # noqa: E402
 from loom.db.repositories.skill_repo import SkillRepo  # noqa: E402
+from loom.models.capability import CapabilityCreate, CapabilityStep, DataFlowEdge  # noqa: E402
 from loom.models.category import CategoryCreate  # noqa: E402
 from loom.models.common import (  # noqa: E402
     APIDependency,
@@ -349,10 +351,144 @@ async def seed() -> None:
                 errors += 1
                 continue
 
+    # -------------------------------------------------------------------
+    # Seed capabilities
+    # -------------------------------------------------------------------
+    cap_dir = SEEDS_DIR / "capabilities"
+    cap_files = sorted(cap_dir.rglob("*.yaml")) if cap_dir.exists() else []
+    print(f"\nFound {len(cap_files)} capability seed files\n")
+
+    cap_created = 0
+    cap_skipped = 0
+    cap_errors = 0
+
+    # Category mapping for capabilities (not in YAML)
+    CAP_CATEGORIES: dict[str, str] = {
+        "comprehensive-code-review": "code-review",
+        "release-documentation": "documentation",
+        "secure-commit-workflow": "development/git",
+    }
+
+    async with pool.acquire() as conn:
+        cap_repo = CapabilityRepo(conn)
+        category_repo2 = CategoryRepo(conn)
+
+        for yaml_path in cap_files:
+            relative = yaml_path.relative_to(REPO_ROOT)
+            print(f"Processing {relative} …")
+
+            try:
+                raw = yaml.safe_load(yaml_path.read_text())
+            except yaml.YAMLError as exc:
+                print(f"  [error] YAML parse failed: {exc}")
+                cap_errors += 1
+                continue
+
+            slug = raw.get("slug", "")
+            if not slug:
+                print("  [error] missing 'slug' field — skipped")
+                cap_errors += 1
+                continue
+
+            existing = await cap_repo.get_by_slug(slug)
+            if existing is not None:
+                print(f"  [skip] capability {slug!r} already exists")
+                cap_skipped += 1
+                continue
+
+            cat_slug = CAP_CATEGORIES.get(slug, "development")
+            await ensure_category_hierarchy(category_repo2, cat_slug)
+
+            # Parse steps
+            steps = [
+                CapabilityStep(
+                    skill_ref=s["skill_ref"],
+                    role=s.get("role", ""),
+                    inputs=s.get("inputs", {}),
+                    outputs=s.get("outputs", {}),
+                    required=s.get("required", True),
+                    data_classification=s.get("data_classification", "none"),
+                )
+                for s in raw.get("steps", [])
+            ]
+
+            # Parse data flow
+            data_flow = [
+                DataFlowEdge(
+                    from_step=e["from_step"],
+                    to_step=e["to_step"],
+                    classification=e.get("classification", "internal"),
+                )
+                for e in raw.get("data_flow", [])
+            ]
+
+            cap_create = CapabilityCreate(
+                slug=slug,
+                name=raw["name"],
+                description=raw["description"],
+                category_slug=cat_slug,
+                version=raw.get("version", "1.0.0"),
+                tags=raw.get("tags", []),
+                scope=Scope(raw.get("scope", "community")),
+                trust_tier=TrustTier(raw.get("trust_tier", "community")),
+                steps=steps,
+                preconditions=raw.get("preconditions", []),
+                expected_outcome=raw.get("expected_outcome", ""),
+                data_flow=data_flow,
+                dependencies=_parse_dependencies(raw.get("dependencies", {})),
+                cost_profile=CostProfile(raw.get("cost_profile", "free")),
+                estimated_duration=EstimatedDuration(raw.get("estimated_duration", "slow")),
+                eval_spec=_parse_eval_spec(raw.get("eval_spec", {})),
+            )
+
+            # Generate embedding
+            embedding = None
+            if has_embedder:
+                embed_text = f"{cap_create.name}\n{cap_create.description}"
+                embedding = await get_embedding(embed_text, settings)
+                if embedding:
+                    print(f"  [embed] {len(embedding)}-dim vector generated")
+
+            # Resolve category to ID
+            cat = await category_repo2.get_by_slug(cat_slug)
+            if cat is None:
+                print(f"  [error] category {cat_slug!r} not found")
+                cap_errors += 1
+                continue
+
+            try:
+                cap = await cap_repo.create(
+                    slug=slug,
+                    name=raw["name"],
+                    description=raw["description"],
+                    category_id=cat.id,
+                    tags=raw.get("tags", []),
+                    version=raw.get("version", "1.0.0"),
+                    author_id=author_id,
+                    steps=steps,
+                    preconditions=raw.get("preconditions", []),
+                    expected_outcome=raw.get("expected_outcome", ""),
+                    data_flow=data_flow,
+                    dependencies=_parse_dependencies(raw.get("dependencies", {})),
+                    scope=Scope(raw.get("scope", "community")),
+                    trust_tier=TrustTier(raw.get("trust_tier", "community")),
+                    cost_profile=CostProfile(raw.get("cost_profile", "free")),
+                    estimated_duration=raw.get("estimated_duration", "slow"),
+                    eval_spec=_parse_eval_spec(raw.get("eval_spec", {})),
+                    embedding=embedding,
+                )
+                print(f"  [+] capability: {cap.slug!r} (id={cap.id})")
+                cap_created += 1
+            except Exception as exc:  # noqa: BLE001
+                print(f"  [error] create failed: {exc}")
+                cap_errors += 1
+
     await pool.close()
 
-    print(f"\nDone. Created: {created}, Skipped: {skipped}, Errors: {errors}")
-    if errors:
+    total_errors = errors + cap_errors
+    print(f"\nDone. Skills: {created} created, {skipped} skipped, {errors} errors")
+    print(f"      Capabilities: {cap_created} created, {cap_skipped} skipped, {cap_errors} errors")
+    if total_errors:
         sys.exit(1)
 
 

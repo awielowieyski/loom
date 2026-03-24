@@ -6,12 +6,16 @@ from typing import Annotated
 import asyncpg
 from fastapi import Depends, Request
 
+from loom.db.repositories.capability_repo import CapabilityRepo
 from loom.db.repositories.category_repo import CategoryRepo
 from loom.db.repositories.eval_repo import EvalRepo
 from loom.db.repositories.skill_repo import SkillRepo
+from loom.services.capability_discovery import CapabilityDiscoveryService
+from loom.services.capability_registry import CapabilityRegistryService
 from loom.services.container import ServiceContainer
 from loom.services.discovery import DiscoveryService
 from loom.services.registry import RegistryService
+from loom.services.unified_resolver import UnifiedResolver
 
 
 def get_container(request: Request) -> ServiceContainer:
@@ -61,3 +65,34 @@ def get_discovery_service(
     container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> DiscoveryService:
     return container.discovery_service_factory(skill_repo)
+
+
+def get_capability_repo(
+    conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
+) -> CapabilityRepo:
+    return container.capability_repo_factory(conn)
+
+
+def get_capability_registry_service(
+    capability_repo: Annotated[CapabilityRepo, Depends(get_capability_repo)],
+    category_repo: Annotated[CategoryRepo, Depends(get_category_repo)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
+) -> CapabilityRegistryService:
+    return container.capability_registry_factory(capability_repo, category_repo)
+
+
+def get_capability_discovery_service(
+    capability_repo: Annotated[CapabilityRepo, Depends(get_capability_repo)],
+    skill_repo: Annotated[SkillRepo, Depends(get_skill_repo)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
+) -> CapabilityDiscoveryService:
+    return container.capability_discovery_factory(capability_repo, skill_repo)
+
+
+def get_unified_resolver(
+    skill_repo: Annotated[SkillRepo, Depends(get_skill_repo)],
+    capability_repo: Annotated[CapabilityRepo, Depends(get_capability_repo)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
+) -> UnifiedResolver:
+    return container.unified_resolver_factory(skill_repo, capability_repo)
