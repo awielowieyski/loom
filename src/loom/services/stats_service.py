@@ -115,7 +115,7 @@ class StatsService:
                 COUNT(*) AS eval_count
             FROM eval_jobs ej
             WHERE ej.status = 'completed'
-              AND ej.completed_at >= NOW() - ($1 || ' weeks')::INTERVAL
+              AND ej.completed_at >= NOW() - ($1::TEXT || ' weeks')::INTERVAL
               {category_filter}
             GROUP BY date_trunc('week', ej.completed_at)
             ORDER BY week
@@ -148,7 +148,7 @@ class StatsService:
         periods: int = 12,
     ) -> dict[str, Any]:
         """Return usage heatmap: categories x time periods."""
-        trunc = "week" if period_type == "week" else "month"
+        trunc = "week" if period_type == "week" else "day"
 
         rows = await self._conn.fetch(
             f"""
@@ -159,7 +159,7 @@ class StatsService:
             FROM usage_reports ur
             JOIN skills s ON ur.skill_id = s.id
             JOIN categories c ON s.category_id = c.id
-            WHERE ur.created_at >= NOW() - ($2 || ' {trunc}s')::INTERVAL
+            WHERE ur.created_at >= NOW() - ($2::TEXT || ' {trunc}s')::INTERVAL
             GROUP BY c.slug, date_trunc($1, ur.created_at)
             ORDER BY c.slug, period
             """,

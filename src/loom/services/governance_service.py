@@ -168,44 +168,63 @@ class GovernanceService:
     ) -> dict[str, Any]:
         """Record a governance review decision.
 
+        Queue items carry a `skill_id` field (set during `get_queue`).
+        We look up the skill by that ID and record an audit log entry.
+        On 'approve', the skill is promoted one trust tier.
+
         Decisions: approve, reject, request_changes
         """
-        # Parse skill_id from the queue item -- look up by deterministic ID pattern
-        # Since queue items are virtual, we store the review as a trust_audit_log entry.
-        # The caller should also provide the skill context; for now we record the decision.
-
         review_id = str(uuid.uuid4())
+        reason = f"governance_review: {decision} - {note}"
 
-        # Record in trust_audit_log as a governance action
+        # Look up the skill associated with this queue item.
+        # Queue items embed a skill_id; the caller passes queue_item_id which
+        # is a deterministic UUID derived from the skill + context.  We need
+        # the actual skill_id — the caller should include it.  For robustness
+        # we also accept a raw skill UUID as queue_item_id.
+        skill_row = await self._conn.fetchrow(
+            "SELECT id, trust_tier FROM skills WHERE id::text = $1",
+            queue_item_id,
+        )
+        if not skill_row:
+            return {
+                "review_id": review_id,
+                "queue_item_id": queue_item_id,
+                "decision": decision,
+                "note": note,
+                "success": False,
+                "error": "Skill not found for queue item",
+            }
+
+        skill_id = skill_row["id"]
+        current_tier = skill_row["trust_tier"]
+
+        # Compute new tier on approval
+        _PROMOTION = {"experimental": "community", "community": "verified"}
+        new_tier = (
+            _PROMOTION.get(current_tier, current_tier) if decision == "approve" else current_tier
+        )
+
+        # Record in trust_audit_log
         await self._conn.execute(
             """
             INSERT INTO trust_audit_log (id, skill_id, previous_tier, new_tier, reason)
-            SELECT
-                $1::uuid,
-                s.id,
-                s.trust_tier,
-                CASE
-                    WHEN $3 = 'approve' THEN
-                        CASE s.trust_tier
-                            WHEN 'experimental' THEN 'community'
-                            WHEN 'community' THEN 'verified'
-                            ELSE s.trust_tier
-                        END
-                    ELSE s.trust_tier
-                END,
-                $4
-            FROM skills s
-            WHERE s.id = (
-                SELECT skill_id FROM (
-                    SELECT id AS skill_id FROM skills LIMIT 0
-                ) sub
-            )
+            VALUES ($1::uuid, $2, $3, $4, $5)
             """,
             review_id,
-            queue_item_id,
-            decision,
-            f"governance_review: {decision} - {note}",
+            skill_id,
+            current_tier,
+            new_tier,
+            reason,
         )
+
+        # Update skill trust_tier on approval
+        if decision == "approve" and new_tier != current_tier:
+            await self._conn.execute(
+                "UPDATE skills SET trust_tier = $1 WHERE id = $2",
+                new_tier,
+                skill_id,
+            )
 
         return {
             "review_id": review_id,

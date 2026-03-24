@@ -20,11 +20,7 @@ _CACHE_TTL = 3600
 class EmbeddingMapService:
     """Computes and caches a 2D UMAP projection of skill/capability embeddings."""
 
-    _cache: dict[str, Any] = {}
-    _cache_ts: float = 0.0
-
     def __init__(self) -> None:
-        # Instance-level cache so tests can get fresh instances
         self._cache: dict[str, Any] = {}
         self._cache_ts: float = 0.0
 
@@ -81,7 +77,7 @@ class EmbeddingMapService:
         if total < 5:
             coords = _random_layout(total)
         else:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             coords = await loop.run_in_executor(None, _run_umap, embedding_matrix)
 
         # Build response

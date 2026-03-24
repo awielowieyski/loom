@@ -119,17 +119,20 @@ def get_behavioral_eval_repo(
 
 def get_activity_feed_service(
     conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> ActivityFeedService:
-    return ActivityFeedService(conn)
+    return container.activity_feed_factory(conn)
 
 
 def get_stats_service(
     conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> StatsService:
-    return StatsService(conn)
+    return container.stats_service_factory(conn)
 
 
 def get_governance_service(
     conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> GovernanceService:
-    return GovernanceService(conn)
+    return container.governance_service_factory(conn)

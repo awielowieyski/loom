@@ -2,13 +2,11 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
   Activity,
-  ChevronRight,
   PanelRightClose,
   PanelRightOpen,
   Plus,
   ArrowUpCircle,
   ArrowDownCircle,
-  Ban,
   CheckCircle2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -17,46 +15,33 @@ import { formatRelativeTime } from '@/lib/format'
 import { useActivityFeed } from '@/hooks/useActivityFeed'
 import type { ActivityEvent } from '@/types/api'
 
-function eventIcon(type: ActivityEvent['type']) {
+function eventIcon(type: ActivityEvent['event_type']) {
   switch (type) {
-    case 'skill_created':
+    case 'skill_submitted':
+    case 'capability_submitted':
       return <Plus className="h-3.5 w-3.5 text-green-500" />
-    case 'skill_updated':
+    case 'trust_promoted':
       return <ArrowUpCircle className="h-3.5 w-3.5 text-blue-500" />
+    case 'trust_demoted':
+      return <ArrowDownCircle className="h-3.5 w-3.5 text-red-500" />
     case 'eval_completed':
       return <CheckCircle2 className="h-3.5 w-3.5 text-purple-500" />
-    case 'resolution':
-      return <ChevronRight className="h-3.5 w-3.5 text-foreground/60" />
-    case 'usage_report':
-      return <Activity className="h-3.5 w-3.5 text-foreground/60" />
     default:
       return <Activity className="h-3.5 w-3.5 text-foreground/60" />
   }
 }
 
-function eventLink(event: ActivityEvent): string | null {
-  if (event.slug) return `/skills/${event.slug}`
-  return null
-}
-
 function FeedItem({ event }: { event: ActivityEvent }) {
-  const link = eventLink(event)
-  const nameEl = link ? (
-    <Link to={link} className="font-medium hover:underline truncate">
-      {event.title}
-    </Link>
-  ) : (
-    <span className="font-medium truncate">{event.title}</span>
-  )
+  const link = `/skills/${event.slug}`
 
   return (
     <div className="flex items-start gap-2 py-1.5 text-xs">
-      <span className="mt-0.5 shrink-0">{eventIcon(event.type)}</span>
+      <span className="mt-0.5 shrink-0">{eventIcon(event.event_type)}</span>
       <div className="flex-1 min-w-0">
-        {nameEl}
-        {event.description && (
-          <p className="text-muted-foreground line-clamp-1">{event.description}</p>
-        )}
+        <Link to={link} className="font-medium hover:underline truncate">
+          {event.name}
+        </Link>
+        <p className="text-muted-foreground line-clamp-1">{event.detail}</p>
       </div>
       <span className="text-muted-foreground shrink-0 text-[10px]">
         {formatRelativeTime(event.timestamp)}
@@ -73,7 +58,8 @@ export function LivingFeed({ className }: LivingFeedProps) {
   const [collapsed, setCollapsed] = useState(false)
   const { data, isLoading } = useActivityFeed({ limit: 20 })
 
-  const events = data?.events ?? []
+  // Backend returns a bare array of ActivityEvent
+  const events = data ?? []
 
   return (
     <div className={cn('flex flex-col', className)}>

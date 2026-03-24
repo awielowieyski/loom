@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from loom.api.deps import get_governance_service
+from loom.api.middleware import verify_api_key
 from loom.services.governance_service import GovernanceService
 
 router = APIRouter(prefix="/api/v1/governance", tags=["governance"])
@@ -20,6 +21,7 @@ class ReviewSubmission(BaseModel):
 @router.get("/queue")
 async def get_queue(
     service: Annotated[GovernanceService, Depends(get_governance_service)],
+    _: Annotated[str, Depends(verify_api_key)],
     reason: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -32,6 +34,7 @@ async def get_queue(
 async def submit_review(
     body: ReviewSubmission,
     service: Annotated[GovernanceService, Depends(get_governance_service)],
+    _: Annotated[str, Depends(verify_api_key)],
 ) -> dict[str, Any]:
     """Submit a governance review decision."""
     return await service.submit_review(

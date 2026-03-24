@@ -363,18 +363,13 @@ export interface Category {
 
 export interface ActivityEvent {
   id: string
-  type: 'skill_created' | 'skill_updated' | 'eval_completed' | 'resolution' | 'usage_report'
+  event_type: 'skill_submitted' | 'capability_submitted' | 'trust_promoted' | 'trust_demoted' | 'eval_completed'
   timestamp: string
-  title: string
-  description: string
-  slug?: string
-  metadata?: Record<string, unknown>
-}
-
-export interface ActivityFeedResponse {
-  events: ActivityEvent[]
-  has_more: boolean
-  cursor?: string
+  slug: string
+  name: string
+  detail: string
+  previous_value?: string | null
+  new_value?: string | null
 }
 
 // ---- Stats / Dashboard ----
