@@ -70,6 +70,8 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
+addopts = "-m 'not (e2e or adversarial_llm)'"
 markers = [
     "e2e: end-to-end tests that make real external API calls (skip in CI)",
+    "adversarial_llm: tests requiring real LLM API calls for adversarial evaluation",
 ]

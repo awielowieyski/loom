@@ -350,64 +350,186 @@ M3i (Model & Registry) ──→ M3ii (Resolution)
 
 ---
 
-## M4: Living Registry
+## M4: Living Registry (Backend)
 
-**Thesis proved:** The registry improves itself over time. Usage signals, continuous evaluation, and community curation create a flywheel that makes skills better without manual intervention.
+**Thesis proved:** The registry improves itself through behavioral evaluation, comparative assessment, and usage feedback. Skills are continuously tested, compared, and informed by real-world outcomes. Quality signals compound over time and bad skills are detected and demoted without manual intervention.
 
-**What you can demo:** Show the quality dashboard. A skill that was `experimental` last week is now `community` — enough successful usage reports crossed the threshold. Another skill's eval score dropped — it was flagged and a steward reviewed it. A third skill hasn't been resolved in 90 days — it's marked stale and deprioritised. An abusive submission was caught and blocked. The registry is alive.
+**What you can demo:** Submit a skill that scores well on M2 eval but produces poor outputs when followed — behavioral eval catches it. Amend a skill — the triage pipeline classifies the change as refinement, regression, or variant with evidence. Show usage stats: a skill promoted from `experimental` to `community` based on 80%+ success rate. Another skill flagged for re-eval after failure rate spiked. A third marked stale after 90 days without resolution.
 
-### Usage Signals
+**Full design:** [M4 Living Registry Spec](2026-03-24-m4-living-registry-spec.md) — Runner-Judge architecture, comparative protocol, usage signals, continuous re-evaluation, abuse prevention.
 
-- [ ] `report_usage(skill_id, version, outcome, runtime)` MCP tool
-- [ ] Anonymous outcome aggregation (success/partial/failure rates per skill per version)
-- [ ] Resolution frequency tracking (popularity signal)
-- [ ] Alternative selection tracking (preference signal)
-- [ ] `context_hash`: one-way hash of skill category + task type classification (not content)
+M4 is divided into three sub-milestones:
 
-### Continuous Evaluation
+```
+M4i (Behavioral Eval) ──→ M4ii (Comparative Eval + Amendment Triage)
+                                    │
+                                    ▼
+                          M4iii (Usage Signals + Continuous Eval)
+```
 
-- [ ] Scheduled re-evaluation: background worker re-scores `community` and `verified` skills weekly
-- [ ] Usage-signal-triggered re-eval: failure rate > 30% triggers immediate re-eval
-- [ ] Model drift detection: when eval engine model is updated, re-score a sample and flag divergence > 0.1
-- [ ] Dependency change monitoring: check declared MCP servers/APIs for deprecation or security advisories
-- [ ] Staleness detection: skills with zero resolutions in 90 days marked stale
-- [ ] Trust tier auto-promotion: `experimental` → `community` when thresholds met
+### M4i: Behavioral Eval Infrastructure
 
-### Lifecycle & Governance
+**Proves:** Skills are evaluated not just on how they look, but on what happens when an LLM follows them.
 
-- [ ] Deprecation workflow: author marks skill as deprecated with successor pointer
-- [ ] Deprecated skills resolve with `deprecated: true` flag and successor suggestion
-- [ ] Removal workflow: maintainer-only, returns 410 Gone
-- [ ] Reporting mechanism: any user can flag a skill (deprioritised pending review)
+#### Runner-Judge Services
+- [ ] `BehavioralRunner` service: sends skill instructions + scenario `input_context` to Runner LLM, parses structured output (actions_taken, output, artifacts, notes)
+- [ ] `BehavioralJudge` service: receives ONLY Runner output + success_criteria + quality_dimensions, scores on outcome quality/completeness/efficiency (0-1 each)
+- [ ] Judge never sees skill instructions (prevents gaming)
+- [ ] Both use data-only protocol (content as JSON in user message, never as system instructions)
+- [ ] Different system prompts, configurable to use different models
 
-### Abuse Prevention
+#### Prompt & Orchestration
+- [ ] Runner/Judge prompt variants registered in `PromptRegistry` with versioning
+- [ ] `BehavioralEvalService` orchestrator: runs Runner N times per scenario, passes each output to Judge, aggregates scores
+- [ ] `run_behavioral_eval_job` arq task: dispatched as post-pipeline phase after M2 passes
+- [ ] `behavioral_eval` field on `eval_spec`: `auto` (default), `not_applicable`, `required`
+- [ ] Auto-detection: scenarios with empty `input_context` → `not_applicable`
 
-- [ ] Submission rate limiting: 5/day for new accounts, 20/day after 10 accepted skills
-- [ ] Content scanning: LLM classifier for prompt injection, credential harvesting, adversarial content
-- [ ] Account verification: email required, GitHub OAuth for network-access skills
-- [ ] Duplicate detection at submission (pre-eval embedding check)
+#### Storage & Trust
+- [ ] `behavioral_eval_runs` table + Alembic migration (unique on eval_job_id + scenario_index + run_index)
+- [ ] `behavioral_score` column on `skills` table (median across all scenario/run combinations)
+- [ ] `behavioral_score` column on `eval_jobs` table
+- [ ] `TrustService` updated: `behavioral_score >= 0.60` required for promotion to `community`
 
-### Web UI
+### M4ii: Comparative Eval + Amendment Triage
 
-- [ ] Browse and search skills/capabilities with filtering
-- [ ] Skill detail view: content, eval scores, usage stats, version history, trust tier
-- [ ] Contribution workflow: submit skill, submit amendment, review queue
-- [ ] Quality dashboard: eval trends, usage heatmap, trust tier distribution, stale/deprecated skills
-- [ ] Category steward tools: review queue, tier promotion interface
-- [ ] OAuth login for humans
+**Proves:** The system can objectively determine which of two skills is better and classify amendments automatically.
+
+#### Head-to-Head Protocol
+- [ ] `ComparativeEvalService`: same scenario → both skills via Runner → two outputs → blind Judge comparison
+- [ ] Output anonymization: Judge receives "Output X" vs "Output Y" with randomized assignment per scenario
+- [ ] Judge scores each on: outcome quality, completeness, efficiency, safety
+- [ ] Preference declared only when confidence > 0.60 (below = tie)
+- [ ] `comparative_eval_results` table + Alembic migration
+
+#### Amendment Triage Pipeline
+- [ ] Semantic diff: embedding similarity between old and new content
+- [ ] Behavioral diff: head-to-head on SAME eval scenarios
+- [ ] Classification matrix: refinement / regression / variant / extension / rejected (based on semantic similarity + behavioral result)
+- [ ] Updated `PUT /api/v1/skills/{slug}`: amendment submission routes through triage pipeline
+
+#### Breaking Change Detection
+- [ ] Query capabilities referencing amended skill via `steps[].skill_ref`
+- [ ] Run capability eval scenarios with both old and new versions
+- [ ] Flag as breaking change if capability behavioral score drops
+- [ ] Notify capability author with evidence
+
+#### API
+- [ ] `POST /api/v1/skills/{slug}/compare` endpoint (202 Accepted, async job)
+
+#### Elo Ranking (stretch)
+- [ ] `skill_rankings` table + Alembic migration (unique on skill_id + category_id)
+- [ ] Baseline 1200, standard Elo calculation, per-category
+- [ ] Inform resolution ordering within same trust tier (advisory, not decisive)
+
+### M4iii: Usage Signals + Feedback Loop + Continuous Eval
+
+**Proves:** Real-world outcomes feed back into the registry, driving promotion, demotion, staleness detection, and re-evaluation.
+
+#### Usage Collection & Aggregation
+- [ ] `usage_reports` table + Alembic migration (idempotent on `idempotency_key`)
+- [ ] `usage_aggregates` table + Alembic migration (unique on skill_id + skill_version + window_type)
+- [ ] `POST /api/v1/usage/report` endpoint (201 Created, idempotent)
+- [ ] `report_usage()` MCP tool (same semantics as REST endpoint)
+- [ ] Usage aggregation arq cron job (hourly): reads reports, upserts 7d/30d/90d window aggregates
+- [ ] `GET /api/v1/skills/{slug}/usage` endpoint
+
+#### Signal-Driven Actions
+- [ ] Signal detection arq cron job: checks thresholds, triggers re-eval or alerts
+- [ ] High failure rate (>30% over 7d, min 10 reports) → trigger behavioral re-eval
+- [ ] Success rate drop (>20% vs previous 30d) → alert + re-eval
+- [ ] Promotion eligibility: `success_rate >= 0.80`, count >= 10 → feed to TrustService
+- [ ] Top 10% in category over 90d → `verified` tier candidate
+
+#### Lifecycle
+- [ ] `deprecated_at`, `successor_slug` columns on `skills` table
+- [ ] `POST /api/v1/skills/{slug}/deprecate` endpoint with successor pointer
+- [ ] Deprecated skills resolve with `deprecated: true` + successor info, sort below non-deprecated
+- [ ] Capabilities get `trust_warnings` for deprecated step dependencies
+- [ ] Removal: maintainer-only `DELETE`, returns 410 Gone
+- [ ] `stale_since` column: set when `resolution_count` = 0 for 90d
+- [ ] `resolution_count` column: incremented on each `resolve()` hit
+
+#### Continuous Re-evaluation
+- [ ] Scheduled weekly re-eval arq cron job: 20% sample of community/verified skills, oldest `last_eval_at` first
+- [ ] `last_eval_at` column on `skills` table
+- [ ] Drift detection: new score differs > 0.15 from stored → flag for steward review
+- [ ] Model drift detection: compare `evaluator_version` across jobs, MAD > 0.10 → halt rollout
+
+#### Abuse Prevention
+- [ ] Rate limiting: Redis sliding window, 5/day unverified, 20/day verified
+- [ ] Duplicate detection: embedding similarity at submission (>0.95 reject, 0.85-0.95 flag)
+- [ ] Network-access skills require `community` tier author
+
+#### Updated Resolution Response
+- [ ] `resolve()` response gains: `deprecated`, `successor`, `stale`, `behavioral_score`, `usage_success_rate`
 
 ### Deliverable
 
-- Self-improving registry with observable quality signals
-- Web UI for human curation and governance
-- Full community contribution workflow
-- Anti-abuse measures active
+- Behavioral evaluation pipeline: Runner-Judge architecture with blind scoring
+- Comparative evaluation with head-to-head protocol and amendment triage
+- Usage signal collection, aggregation, and signal-driven actions
+- Continuous re-evaluation with drift detection
+- Deprecation and staleness lifecycle
+- Abuse prevention (rate limits, duplicate detection)
+- All new REST endpoints and MCP tool updates
 
 ---
 
-## M5: Corporate Loom
+## M5: Web UI + Community
 
-**Thesis proved:** The business model works. Organisations pay for private Loom instances that compose with the public registry. The three-tier resolution chain (local → corporate → community) is operational.
+**Thesis proved:** Humans can browse, contribute, and curate the registry through a web interface. Category stewards have governance tools. The community contribution workflow is operational end-to-end.
+
+**What you can demo:** Open the Loom web UI. Browse skills by category with filtering. Click into a skill and see its eval scores, behavioral eval results, usage stats, version history, and trust tier. Submit a new skill through the contribution form — it enters the eval pipeline. Review a flagged amendment in the steward queue. View the quality dashboard: eval trends, usage heatmap, trust tier distribution, stale/deprecated skills.
+
+### Web Application
+
+- [ ] React SPA with TypeScript
+- [ ] OAuth login (GitHub, Google) for human contributors
+- [ ] Responsive design for desktop and tablet
+
+### Browse & Search
+
+- [ ] Browse skills and capabilities with category filtering
+- [ ] Full-text and semantic search
+- [ ] Skill detail view: content, eval scores, behavioral eval results, usage stats, version history, trust tier
+- [ ] Capability detail view: steps, data flow, resolved plan preview
+
+### Contribution Workflow
+
+- [ ] Submit new skill form with live validation
+- [ ] Submit amendment to existing skill
+- [ ] Amendment diff view: side-by-side comparison with triage classification
+- [ ] Submission status tracking: eval pipeline progress, results
+
+### Steward Tools
+
+- [ ] Review queue: skills awaiting human review (low-confidence evals, injection flags, mixed amendments)
+- [ ] Review interface: eval fragments, scores, indicators, approve/reject actions
+- [ ] Tier promotion interface: override auto-promotion decisions with audit trail
+- [ ] Flagged skill management: community-reported skills pending review
+
+### Quality Dashboard
+
+- [ ] Eval score trends over time (per skill, per category)
+- [ ] Usage heatmap: resolution frequency by category and time
+- [ ] Trust tier distribution: how many skills at each tier
+- [ ] Stale and deprecated skills overview
+- [ ] Behavioral eval coverage: percentage of skills with behavioral scores
+
+### Deliverable
+
+- Production-ready web UI for browsing, contributing, and curating skills
+- Full community contribution workflow (submit, amend, review)
+- Category steward governance tools
+- Quality dashboard with observable metrics
+- OAuth authentication for human users
+
+---
+
+## M6: Corporate Loom
+
+**Thesis proved:** The business model works. Organisations pay for private Loom instances that compose with the public registry. The three-tier resolution chain (local -> corporate -> community) is operational.
 
 **What you can demo:** An organisation's agent resolves `corp://acme-vendor-assessment`. The corporate Loom instance serves the org-specific skill. That skill `extends` `loom://vendor-risk-briefing@verified` from the public registry. The agent gets the merged result: community knowledge + corporate context. The org admin sees usage analytics in their dashboard. None of their corporate skills are visible to the public registry.
 
@@ -423,7 +545,7 @@ M3i (Model & Registry) ──→ M3ii (Resolution)
 - [ ] `corp://` URI scheme: corporate MCP server resolves `corp://` locally, `loom://` from public registry
 - [ ] Public registry resolution from corporate instance: sends only slug + version, not corporate context
 - [ ] Air-gapped mode: disable public registry connectivity (all `loom://` references return "unavailable")
-- [ ] `extends` chain resolution across tiers: recursive resolution through corp → loom
+- [ ] `extends` chain resolution across tiers: recursive resolution through corp -> loom
 
 ### Corporate Eval
 
@@ -471,19 +593,22 @@ M1 (Resolution + MCP) ──→ M2 (Quality + Trust) ──→ M3 (Composition)
                                     │                      │
                                     └──────────┬───────────┘
                                                ↓
-                                    M4 (Living Registry)
+                                    M4 (Living Registry — Backend)
                                                │
                                                ↓
-                                    M5 (Corporate Loom)
+                                    M5 (Web UI + Community)
+                                               │
+                                               ↓
+                                    M6 (Corporate Loom)
 ```
 
-M1 → M2 → M3 is the critical path. M4 can start in parallel with M3 (the usage reporting and continuous eval don't depend on capabilities). M5 depends on M4 because corporate instances need the governance and abuse prevention infrastructure.
+M1 -> M2 -> M3 is the critical path. M4 can start in parallel with M3 (usage reporting and behavioral eval don't depend on capabilities, though breaking change detection for capabilities requires M3). M5 depends on M4 because the web UI surfaces M4's behavioral scores, usage stats, and governance workflows. M6 depends on M5 because corporate instances need the governance, abuse prevention, and community infrastructure.
 
 ---
 
 ## What's NOT in These Milestones
 
-These are explicitly deferred beyond M5:
+These are explicitly deferred beyond M6:
 
 - **Credential brokering / token exchange** — Loom declares dependencies; runtimes handle auth
 - **Runtime scope enforcement** — agent runtimes' responsibility
