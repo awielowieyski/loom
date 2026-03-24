@@ -59,8 +59,16 @@ async def startup(ctx: dict[str, Any]) -> None:
     ctx["isolate_content"] = isolate_content
     ctx["llm_evaluator"] = llm_evaluator
     ctx["score_aggregator"] = score_aggregator
+    from loom.db.repositories.usage_repo import UsageRepo
+
     ctx["skill_repo_factory"] = lambda conn: SkillRepo(conn)
     ctx["eval_repo_factory"] = lambda conn: EvalRepo(conn)
+    ctx["usage_repo_factory"] = lambda conn: UsageRepo(conn)
+
+    # Create arq Redis pool for job enqueueing (used by cron jobs)
+    from arq import create_pool as create_arq_pool
+
+    ctx["redis"] = await create_arq_pool(_redis_settings_from_url(settings.redis.url))
 
     logger.info("Worker started — pool and pipeline services ready")
 
@@ -188,6 +196,101 @@ async def run_eval_job(ctx: dict[str, Any], skill_id: str, trigger: str) -> dict
     }
 
 
+async def scheduled_reeval(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Weekly cron: re-check a sample of community/verified skills.
+
+    Selects the oldest-checked skills from community and verified tiers,
+    takes a configurable sample (default 20%), and enqueues each for
+    re-checking via the standard ``run_eval_job`` pipeline.
+    """
+    import math
+
+    pool = ctx["pool"]
+    settings: Any = ctx["settings"]
+    sample_percent: float = settings.pipeline.reeval_sample_percent
+
+    async with pool.acquire() as conn:
+        skill_repo = ctx["skill_repo_factory"](conn)
+        tiers = ["community", "verified"]
+
+        total = await skill_repo.count_by_trust_tiers(tiers)
+        if total == 0:
+            logger.info("scheduled_reeval: no eligible skills found")
+            return {"skills_sampled": 0, "total_eligible": 0}
+
+        sample_size = max(1, math.ceil(total * sample_percent))
+        candidates = await skill_repo.get_reeval_candidates(tiers, sample_size)
+
+    # Enqueue each candidate for re-assessment
+    redis = ctx.get("redis")
+    enqueued = 0
+    for skill in candidates:
+        if redis:
+            await redis.enqueue_job("run_eval_job", str(skill.id), "scheduled")
+        enqueued += 1
+
+    logger.info(
+        "scheduled_reeval: enqueued %d/%d eligible skills for re-assessment",
+        enqueued,
+        total,
+    )
+    return {"skills_sampled": enqueued, "total_eligible": total}
+
+
+async def aggregate_usage(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Hourly cron: aggregate usage reports into per-skill per-window statistics."""
+    from datetime import timedelta
+
+    pool = ctx["pool"]
+    now = datetime.now(UTC)
+
+    window_configs = [
+        ("7d", 7),
+        ("30d", 30),
+        ("90d", 90),
+    ]
+
+    windows_processed = 0
+    skills_updated = 0
+
+    async with pool.acquire() as conn:
+        usage_repo = ctx["usage_repo_factory"](conn)
+
+        for window_type, days in window_configs:
+            window_start = now - timedelta(days=days)
+            pairs = await usage_repo.get_distinct_skill_versions_in_window(window_start)
+
+            for skill_id, skill_version in pairs:
+                stats = await usage_repo.aggregate_reports_in_window(
+                    skill_id, skill_version, window_start
+                )
+                total = stats["success"] + stats["partial"] + stats["failure"]
+                success_rate = stats["success"] / total if total > 0 else None
+
+                await usage_repo.upsert_aggregate(
+                    skill_id=skill_id,
+                    skill_version=skill_version,
+                    window_type=window_type,
+                    success_count=stats["success"],
+                    partial_count=stats["partial"],
+                    failure_count=stats["failure"],
+                    success_rate=success_rate,
+                    avg_runtime_ms=stats["avg_runtime_ms"],
+                    computed_at=now,
+                    window_start=window_start,
+                )
+                skills_updated += 1
+
+            windows_processed += 1
+
+    logger.info(
+        "aggregate_usage: processed %d windows, updated %d skill aggregates",
+        windows_processed,
+        skills_updated,
+    )
+    return {"windows_processed": windows_processed, "skills_updated": skills_updated}
+
+
 def _redis_settings_from_url(url: str) -> RedisSettings:
     """Parse a redis:// URL into arq RedisSettings."""
     from urllib.parse import urlparse
@@ -208,6 +311,10 @@ class WorkerSettings:
     """
 
     functions = [run_eval_job]
+    cron_jobs = [
+        cron(scheduled_reeval, weekday={6}, hour={3}, minute={17}),
+        cron(aggregate_usage, hour=None, minute={17}),  # every hour at :17
+    ]
     on_startup = startup
     on_shutdown = shutdown
     max_jobs = 5
