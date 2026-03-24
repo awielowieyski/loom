@@ -478,52 +478,132 @@ M4i (Behavioral Eval) ──→ M4ii (Comparative Eval + Amendment Triage)
 
 ## M5: Web UI + Community
 
-**Thesis proved:** Humans can browse, contribute, and curate the registry through a web interface. Category stewards have governance tools. The community contribution workflow is operational end-to-end.
+**Thesis proved:** Humans can browse, contribute, and curate the registry through a web interface that makes resolution — not browsing — the primary interaction. The UI surfaces Loom's resolution engine as an explorable landscape with governance tools for category stewards.
 
-**What you can demo:** Open the Loom web UI. Browse skills by category with filtering. Click into a skill and see its eval scores, behavioral eval results, usage stats, version history, and trust tier. Submit a new skill through the contribution form — it enters the eval pipeline. Review a flagged amendment in the steward queue. View the quality dashboard: eval trends, usage heatmap, trust tier distribution, stale/deprecated skills.
+**What you can demo:** Open the Loom web UI. Type a task description — live resolution shows the best skill with alternatives and rejection rationale. Toggle context constraints and watch resolution change. Zoom out on the semantic landscape to see skill clusters by category; zoom in to see individual fingerprints. Click a skill to inspect its eval history, behavioral scores, trust journey, and usage stats. Submit a new skill through the contribution form — it enters the eval pipeline. Review a flagged amendment in the steward queue. View the governance dashboard: eval trends, usage heatmap, trust tier distribution.
 
-### Web Application
+**Full design:** [M5 Web UI Spec](2026-03-24-m5-web-ui-spec.md) — resolution-first UX, semantic landscape, skill fingerprints, four views, component architecture, security model.
 
-- [ ] React SPA with TypeScript
-- [ ] OAuth login (GitHub, Google) for human contributors
-- [ ] Responsive design for desktop and tablet
+M5 is divided into four sub-milestones that sequence from foundation through views to governance and polish:
 
-### Browse & Search
+```
+M5i (Foundation + Resolve) ──→ M5ii (Explore + Inspect)
+                                        │
+                                        ▼
+                                 M5iii (Govern + Auth)
+                                        │
+                                        ▼
+                                 M5iv (Polish + Contribution)
+```
 
-- [ ] Browse skills and capabilities with category filtering
-- [ ] Full-text and semantic search
-- [ ] Skill detail view: content, eval scores, behavioral eval results, usage stats, version history, trust tier
-- [ ] Capability detail view: steps, data flow, resolved plan preview
+### M5i: Foundation + Resolve View
 
-### Contribution Workflow
+**Proves:** The resolution-first UX concept works. Users can resolve skills through a browser.
 
-- [ ] Submit new skill form with live validation
-- [ ] Submit amendment to existing skill
-- [ ] Amendment diff view: side-by-side comparison with triage classification
-- [ ] Submission status tracking: eval pipeline progress, results
+#### Project Setup
+- [ ] Vite project scaffold with React 19 + TypeScript
+- [ ] Tailwind CSS + shadcn/ui integration
+- [ ] TanStack Router setup with route structure
+- [ ] TanStack Query setup with API client layer
+- [ ] Base layout: header navigation, responsive shell
+- [ ] Type definitions mirroring existing API response shapes
 
-### Steward Tools
+#### Resolve View
+- [ ] Hero search bar with debounced resolution (300ms)
+- [ ] Primary result card with full detail
+- [ ] Alternatives list with rejection rationale
+- [ ] Context toggles: available_tools, trust_floor, cost_budget
+- [ ] Resolution history (localStorage-backed)
+- [ ] Loading states, empty states, error handling
 
-- [ ] Review queue: skills awaiting human review (low-confidence evals, injection flags, mixed amendments)
-- [ ] Review interface: eval fragments, scores, indicators, approve/reject actions
-- [ ] Tier promotion interface: override auto-promotion decisions with audit trail
-- [ ] Flagged skill management: community-reported skills pending review
+#### Skill Fingerprint Component
+- [ ] SVG-based 5-axis radar with cardinal spline interpolation
+- [ ] Three sizes: thumbnail (32px), card (64px), hero (200px)
+- [ ] Color intensity mapping to confidence
+- [ ] Glow effect for behavioral score
+- [ ] Interactive hover labels on hero size
 
-### Quality Dashboard
+#### Living Feed Sidebar
+- [ ] Recent activity feed component
+- [ ] Polling-based updates from listing endpoints
+- [ ] Collapsible on smaller viewports
 
-- [ ] Eval score trends over time (per skill, per category)
-- [ ] Usage heatmap: resolution frequency by category and time
-- [ ] Trust tier distribution: how many skills at each tier
-- [ ] Stale and deprecated skills overview
-- [ ] Behavioral eval coverage: percentage of skills with behavioral scores
+### M5ii: Explore + Inspect
+
+**Proves:** The registry is navigable as a spatial landscape and individual skills are deeply inspectable.
+
+#### Semantic Landscape
+- [ ] `GET /api/v1/embeddings/map` backend endpoint (UMAP/t-SNE projection)
+- [ ] D3/visx canvas with pan/zoom interaction
+- [ ] Skill nodes with fingerprint thumbnails
+- [ ] Capability nodes with edges to constituent skills
+- [ ] Cluster labels from category names
+- [ ] Visual encoding: trust tier → size, type → color, quality → opacity
+- [ ] Search overlay: highlight matching nodes, fade others
+- [ ] Click node → slide-out detail panel
+
+#### Inspect Views
+- [ ] Skill detail: header, description, content preview, large fingerprint
+- [ ] Eval history (scores over versions)
+- [ ] Usage stats display (success rate, resolution count, avg runtime)
+- [ ] Trust journey timeline
+- [ ] `GET /api/v1/skills/{slug}/timeline` backend endpoint
+- [ ] Capability flow diagram (React Flow): steps as nodes, data flow as edges
+- [ ] Step nodes expandable to show embedded skill content
+- [ ] Alternatives comparison and version diff views
+
+### M5iii: Govern + Auth
+
+**Proves:** Stewards can govern the registry through a web interface. OAuth enables human identity.
+
+#### Authentication
+- [ ] GitHub + Google OAuth provider integration
+- [ ] JWT token management (access + refresh)
+- [ ] `users` table migration: `oauth_provider`, `oauth_id`, `role`, etc.
+- [ ] Auth middleware for role-gated endpoints
+- [ ] Login/logout UI in header
+
+#### Governance Dashboard
+- [ ] `GET /api/v1/stats/overview` endpoint — registry health metrics
+- [ ] `GET /api/v1/stats/eval-trends` endpoint — score distribution over time
+- [ ] `GET /api/v1/stats/usage-heatmap` endpoint — resolution frequency by category × time
+- [ ] Health cards, eval trends chart, usage heatmap visualization
+
+#### Review Queue
+- [ ] `GET /api/v1/governance/queue` endpoint — items needing review
+- [ ] `POST /api/v1/governance/review` endpoint — approve/reject/request-changes
+- [ ] Review interface: eval fragments, scores, injection indicators
+- [ ] Promotion queue with override controls
+- [ ] Breaking change reports
+
+### M5iv: Polish + Contribution
+
+**Proves:** The full community contribution workflow is operational. The UI is production-quality.
+
+#### Contribution Workflow
+- [ ] New skill submission form with live validation
+- [ ] Content editor with markdown preview
+- [ ] Eval spec builder: scenarios with input_context, success_criteria
+- [ ] Amendment submission with side-by-side diff preview
+- [ ] Submission status tracking (eval pipeline progress)
+
+#### Polish
+- [ ] Framer Motion page transitions and micro-interactions
+- [ ] Responsive design (desktop + tablet)
+- [ ] Route-based code splitting
+- [ ] TanStack Query cache tuning and prefetching
+- [ ] Skeleton loading states throughout
 
 ### Deliverable
 
-- Production-ready web UI for browsing, contributing, and curating skills
+- Resolution-first web UI with live constraint-aware resolution
+- Semantic landscape for spatial exploration of the skill registry
+- Skill fingerprint visualization (5-axis eval radar)
+- Capability flow diagrams (React Flow)
 - Full community contribution workflow (submit, amend, review)
-- Category steward governance tools
-- Quality dashboard with observable metrics
-- OAuth authentication for human users
+- Governance dashboard with health metrics, eval trends, and usage heatmap
+- OAuth authentication (GitHub, Google) with role-based access
+- 7 new backend endpoints for embeddings, stats, governance, and timeline
 
 ---
 
