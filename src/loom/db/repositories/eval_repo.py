@@ -91,6 +91,7 @@ class EvalRepo:
         injection_flagged: bool | None = None,
         sandbox_passed: bool | None = None,
         overall_confidence: float | None = None,
+        behavioral_score: float | None = None,
         started_at: Any | None = None,
         completed_at: Any | None = None,
     ) -> EvalJob | None:
@@ -112,6 +113,7 @@ class EvalRepo:
         _add("injection_flagged", injection_flagged)
         _add("sandbox_passed", sandbox_passed)
         _add("overall_confidence", overall_confidence)
+        _add("behavioral_score", behavioral_score)
         _add("started_at", started_at)
         _add("completed_at", completed_at)
 

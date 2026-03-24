@@ -283,6 +283,7 @@ async def run_behavioral_eval_job(
             eval_status="completed",
             composite_score=skill.composite_score,
             latest_eval_job_id=uuid.UUID(eval_job_id),
+            behavioral_score=eval_result.behavioral_score,
         )
 
     logger.info(

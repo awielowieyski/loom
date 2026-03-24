@@ -411,19 +411,28 @@ class SkillRepo:
         eval_status: str,
         composite_score: float | None = None,
         latest_eval_job_id: uuid_mod.UUID | None = None,
+        behavioral_score: float | None = None,
     ) -> None:
         """Update evaluation-related fields on a skill row."""
+        set_parts = ["eval_status = $1", "updated_at = now()"]
+        params: list[Any] = [eval_status]
+
+        if composite_score is not None:
+            params.append(composite_score)
+            set_parts.append(f"composite_score = ${len(params)}")
+
+        if latest_eval_job_id is not None:
+            params.append(latest_eval_job_id)
+            set_parts.append(f"latest_eval_job_id = ${len(params)}")
+
+        if behavioral_score is not None:
+            params.append(behavioral_score)
+            set_parts.append(f"behavioral_score = ${len(params)}")
+
+        params.append(skill_id)
         await self._conn.execute(
-            """UPDATE skills
-               SET eval_status = $1,
-                   composite_score = $2,
-                   latest_eval_job_id = $3,
-                   updated_at = now()
-               WHERE id = $4""",
-            eval_status,
-            composite_score,
-            latest_eval_job_id,
-            skill_id,
+            f"UPDATE skills SET {', '.join(set_parts)} WHERE id = ${len(params)}",  # noqa: S608
+            *params,
         )
 
     # --- M4: Living registry lifecycle methods ---
