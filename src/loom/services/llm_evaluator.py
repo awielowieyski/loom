@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from loom.models.common import EvalDimension
 from loom.models.eval import DimensionResult, IsolatedFragments
+from loom.services._llm_utils import strip_code_fences as _strip_code_fences
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -67,18 +68,6 @@ def _build_user_message(
     if dimension == EvalDimension.SAFETY:
         msg["injection_indicators"] = [ind.model_dump() for ind in fragments.injection_indicators]
     return json.dumps(msg)
-
-
-def _strip_code_fences(text: str) -> str:
-    """Strip markdown code fences from LLM response if present."""
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        # Remove opening fence (```json or ```)
-        first_newline = stripped.index("\n")
-        stripped = stripped[first_newline + 1 :]
-    if stripped.endswith("```"):
-        stripped = stripped[:-3]
-    return stripped.strip()
 
 
 def _parse_response(raw: str, dimension: EvalDimension) -> DimensionResult:
