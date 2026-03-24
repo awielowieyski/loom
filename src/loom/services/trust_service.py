@@ -29,12 +29,14 @@ class TrustService:
         safety_floor: float = 0.60,
         min_usage_count: int = 10,
         min_success_rate: float = 0.80,
+        behavioral_floor: float = 0.60,
     ) -> None:
         self._eval_repo = eval_repo
         self._promotion_threshold = promotion_threshold
         self._safety_floor = safety_floor
         self._min_usage_count = min_usage_count
         self._min_success_rate = min_success_rate
+        self._behavioral_floor = behavioral_floor
 
     async def check_promotion(
         self,
@@ -43,6 +45,7 @@ class TrustService:
         is_signed: bool,
         usage_count: int,
         success_rate: float,
+        behavioral_score: float | None = None,
     ) -> PromotionDecision:
         """Decide whether *skill_id* should be promoted from *current_tier*."""
 
@@ -72,6 +75,16 @@ class TrustService:
             return PromotionDecision(
                 should_promote=False,
                 reason=(f"low success rate ({success_rate:.2f} < {self._min_success_rate:.2f})"),
+            )
+
+        # Check behavioral score (M4)
+        if behavioral_score is not None and behavioral_score < self._behavioral_floor:
+            return PromotionDecision(
+                should_promote=False,
+                reason=(
+                    f"behavioral score below floor "
+                    f"({behavioral_score:.2f} < {self._behavioral_floor:.2f})"
+                ),
             )
 
         # Fetch latest eval
