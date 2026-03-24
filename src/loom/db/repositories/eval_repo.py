@@ -11,7 +11,7 @@ _EVAL_JOB_COLUMNS = (
     "id, skill_id, skill_version, content_hash, trigger_type, status, "
     "structural_report, composite_score, dimension_scores, dimension_confidence, "
     "injection_flagged, sandbox_passed, overall_confidence, evaluator_version, "
-    "started_at, completed_at, created_at"
+    "behavioral_score, started_at, completed_at, created_at"
 )
 
 _DIMENSION_RUN_COLUMNS = (
@@ -91,6 +91,7 @@ class EvalRepo:
         injection_flagged: bool | None = None,
         sandbox_passed: bool | None = None,
         overall_confidence: float | None = None,
+        behavioral_score: float | None = None,
         started_at: Any | None = None,
         completed_at: Any | None = None,
     ) -> EvalJob | None:
@@ -112,6 +113,7 @@ class EvalRepo:
         _add("injection_flagged", injection_flagged)
         _add("sandbox_passed", sandbox_passed)
         _add("overall_confidence", overall_confidence)
+        _add("behavioral_score", behavioral_score)
         _add("started_at", started_at)
         _add("completed_at", completed_at)
 
@@ -144,6 +146,35 @@ class EvalRepo:
         if row is None:
             return None
         return _row_to_eval_job(row)
+
+    async def get_recent_completed_jobs(
+        self, skill_id: uuid_mod.UUID, limit: int = 2
+    ) -> list[EvalJob]:
+        """Return the most recent completed eval jobs for a skill."""
+        rows = await self._conn.fetch(
+            f"""
+            SELECT {_EVAL_JOB_COLUMNS} FROM eval_jobs
+            WHERE skill_id = $1 AND status = 'completed'
+            ORDER BY completed_at DESC
+            LIMIT $2
+            """,
+            skill_id,
+            limit,
+        )
+        return [_row_to_eval_job(row) for row in rows]
+
+    async def get_recent_completed_jobs_all(self, limit: int = 40) -> list[EvalJob]:
+        """Return the most recent completed eval jobs across all skills."""
+        rows = await self._conn.fetch(
+            f"""
+            SELECT {_EVAL_JOB_COLUMNS} FROM eval_jobs
+            WHERE status = 'completed'
+            ORDER BY completed_at DESC
+            LIMIT $1
+            """,
+            limit,
+        )
+        return [_row_to_eval_job(row) for row in rows]
 
     async def create_dimension_run(
         self,

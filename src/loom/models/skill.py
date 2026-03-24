@@ -57,6 +57,13 @@ class Skill(BaseModel):
     composite_score: float | None = None
     latest_eval_job_id: str | None = None
     signature_key_fingerprint: str | None = None
+    # M4: living registry columns
+    deprecated_at: datetime | None = None
+    successor_slug: str | None = None
+    stale_since: datetime | None = None
+    behavioral_score: float | None = None
+    last_eval_at: datetime | None = None
+    resolution_count: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

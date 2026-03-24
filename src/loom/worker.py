@@ -59,8 +59,44 @@ async def startup(ctx: dict[str, Any]) -> None:
     ctx["isolate_content"] = isolate_content
     ctx["llm_evaluator"] = llm_evaluator
     ctx["score_aggregator"] = score_aggregator
+    from loom.db.repositories.usage_repo import UsageRepo
+
     ctx["skill_repo_factory"] = lambda conn: SkillRepo(conn)
     ctx["eval_repo_factory"] = lambda conn: EvalRepo(conn)
+    ctx["usage_repo_factory"] = lambda conn: UsageRepo(conn)
+
+    # M4: Behavioral evaluation services
+    from loom.db.repositories.behavioral_eval_repo import BehavioralEvalRepo
+    from loom.services.behavioral_judge import BehavioralJudge
+    from loom.services.behavioral_runner import BehavioralRunner
+
+    # NOTE: runner_model and judge_model settings are metadata-only; they are
+    # stored on eval records for provenance but all inference currently uses
+    # the default llm_model via agent_factory.  Separate model support (i.e.
+    # passing distinct Model instances to Runner vs Judge) is a future enhancement.
+    runner_model_id = settings.pipeline.runner_model or settings.llm.model
+    judge_model_id = settings.pipeline.judge_model or settings.llm.model
+
+    behavioral_runner = BehavioralRunner(
+        agent_factory=agent_factory,
+        prompt_registry=prompt_registry,
+        model_id=runner_model_id,
+    )
+    behavioral_judge = BehavioralJudge(
+        agent_factory=agent_factory,
+        prompt_registry=prompt_registry,
+        model_id=judge_model_id,
+    )
+
+    ctx["behavioral_runner"] = behavioral_runner
+    ctx["behavioral_judge"] = behavioral_judge
+    ctx["behavioral_eval_repo_factory"] = lambda conn: BehavioralEvalRepo(conn)
+    ctx["behavioral_runs_per_scenario"] = settings.pipeline.behavioral_runs_per_scenario
+
+    # Create arq Redis pool for job enqueueing (used by cron jobs)
+    from arq import create_pool as create_arq_pool
+
+    ctx["redis"] = await create_arq_pool(_redis_settings_from_url(settings.redis.url))
 
     logger.info("Worker started — pool and pipeline services ready")
 
@@ -70,6 +106,9 @@ async def shutdown(ctx: dict[str, Any]) -> None:
     pool = ctx.get("pool")
     if pool is not None:
         await pool.close()
+    redis = ctx.get("redis")
+    if redis is not None:
+        await redis.close()
     logger.info("Worker shutdown — pool closed")
 
 
@@ -172,7 +211,19 @@ async def run_eval_job(ctx: dict[str, Any], skill_id: str, trigger: str) -> dict
             eval_status="completed",
             composite_score=result.composite_score,
             latest_eval_job_id=job.id,
+            last_eval_at=datetime.now(UTC),
         )
+
+    # Dispatch behavioral evaluation if the M2 pipeline passed
+    if result.passed:
+        redis = ctx.get("redis")
+        if redis:
+            await redis.enqueue_job(
+                "run_behavioral_eval_job",
+                skill_id,
+                str(job.id),
+                trigger,
+            )
 
     logger.info(
         "Eval job %s completed for skill %s — score=%.2f, passed=%s",
@@ -185,6 +236,252 @@ async def run_eval_job(ctx: dict[str, Any], skill_id: str, trigger: str) -> dict
         "job_id": str(job.id),
         "passed": result.passed,
         "composite_score": result.composite_score,
+    }
+
+
+async def run_behavioral_eval_job(
+    ctx: dict[str, Any], skill_id: str, eval_job_id: str, trigger: str
+) -> dict[str, Any]:
+    """Run behavioral evaluation as a post-pipeline phase.
+
+    Dispatched after M2's 5-phase pipeline passes. Runs the Runner-Judge
+    loop for each scenario and persists results.
+    """
+    import uuid
+
+    from loom.services.behavioral_eval_service import BehavioralEvalService
+
+    pool = ctx["pool"]
+
+    # --- Phase A: fetch skill (connection released immediately) ---
+    async with pool.acquire() as conn:
+        skill_repo = ctx["skill_repo_factory"](conn)
+        skill = await skill_repo.get_by_id(uuid.UUID(skill_id))
+        if skill is None:
+            logger.error("Skill %s not found for behavioral eval", skill_id)
+            return {"error": f"Skill {skill_id} not found"}
+
+    # --- Phase B: run evaluation (no DB connection held) ---
+    service = BehavioralEvalService(
+        runner=ctx["behavioral_runner"],
+        judge=ctx["behavioral_judge"],
+        runs_per_scenario=ctx["behavioral_runs_per_scenario"],
+    )
+    eval_result = await service.run_evaluation(skill, uuid.UUID(eval_job_id))
+
+    if eval_result is None:
+        logger.info("Behavioral eval not applicable for skill %s", skill_id)
+        return {"job_id": eval_job_id, "behavioral_score": None, "run_count": 0}
+
+    # --- Phase C: persist results (fresh DB connection) ---
+    async with pool.acquire() as conn:
+        behavioral_eval_repo = ctx["behavioral_eval_repo_factory"](conn)
+        eval_repo = ctx["eval_repo_factory"](conn)
+        skill_repo = ctx["skill_repo_factory"](conn)
+
+        await BehavioralEvalService.persist_runs(
+            behavioral_eval_repo, uuid.UUID(eval_job_id), eval_result.pending_runs
+        )
+        await eval_repo.update_eval_job(
+            uuid.UUID(eval_job_id),
+            behavioral_score=eval_result.behavioral_score,
+        )
+        await skill_repo.update_eval_fields(
+            skill.id,
+            eval_status="completed",
+            latest_eval_job_id=uuid.UUID(eval_job_id),
+            behavioral_score=eval_result.behavioral_score,
+            last_eval_at=datetime.now(UTC),
+        )
+
+    logger.info(
+        "Behavioral eval completed for skill %s — score=%.2f, runs=%d",
+        skill_id,
+        eval_result.behavioral_score,
+        eval_result.run_count,
+    )
+    return {
+        "job_id": eval_job_id,
+        "behavioral_score": eval_result.behavioral_score,
+        "run_count": eval_result.run_count,
+    }
+
+
+async def scheduled_reeval(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Weekly cron: re-check a sample of community/verified skills.
+
+    Selects the oldest-checked skills from community and verified tiers,
+    takes a configurable sample (default 20%), and enqueues each for
+    re-checking via the standard ``run_eval_job`` pipeline.
+    """
+    import math
+
+    pool = ctx["pool"]
+    settings: Any = ctx["settings"]
+    sample_percent: float = settings.pipeline.reeval_sample_percent
+
+    async with pool.acquire() as conn:
+        skill_repo = ctx["skill_repo_factory"](conn)
+        tiers = ["community", "verified"]
+
+        total = await skill_repo.count_by_trust_tiers(tiers)
+        if total == 0:
+            logger.info("scheduled_reeval: no eligible skills found")
+            return {"skills_sampled": 0, "total_eligible": 0}
+
+        sample_size = max(1, math.ceil(total * sample_percent))
+        candidates = await skill_repo.get_reeval_candidates(tiers, sample_size)
+
+    # Enqueue each candidate for re-assessment
+    redis = ctx.get("redis")
+    enqueued = 0
+    for skill in candidates:
+        if redis:
+            await redis.enqueue_job("run_eval_job", str(skill.id), "scheduled")
+        enqueued += 1
+
+    logger.info(
+        "scheduled_reeval: enqueued %d/%d eligible skills for re-assessment",
+        enqueued,
+        total,
+    )
+    return {"skills_sampled": enqueued, "total_eligible": total}
+
+
+async def aggregate_usage(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Hourly cron: aggregate usage reports into per-skill per-window statistics."""
+    from datetime import timedelta
+
+    pool = ctx["pool"]
+    now = datetime.now(UTC)
+
+    window_configs = [
+        ("7d", 7),
+        ("30d", 30),
+        ("90d", 90),
+    ]
+
+    windows_processed = 0
+    skills_updated = 0
+
+    async with pool.acquire() as conn:
+        usage_repo = ctx["usage_repo_factory"](conn)
+
+        for window_type, days in window_configs:
+            window_start = now - timedelta(days=days)
+            pairs = await usage_repo.get_distinct_skill_versions_in_window(window_start)
+
+            for skill_id, skill_version in pairs:
+                stats = await usage_repo.aggregate_reports_in_window(
+                    skill_id, skill_version, window_start
+                )
+                total = stats["success"] + stats["partial"] + stats["failure"]
+                success_rate = stats["success"] / total if total > 0 else None
+
+                await usage_repo.upsert_aggregate(
+                    skill_id=skill_id,
+                    skill_version=skill_version,
+                    window_type=window_type,
+                    success_count=stats["success"],
+                    partial_count=stats["partial"],
+                    failure_count=stats["failure"],
+                    success_rate=success_rate,
+                    avg_runtime_ms=stats["avg_runtime_ms"],
+                    computed_at=now,
+                    window_start=window_start,
+                )
+                skills_updated += 1
+
+            windows_processed += 1
+
+    logger.info(
+        "aggregate_usage: processed %d windows, updated %d skill aggregates",
+        windows_processed,
+        skills_updated,
+    )
+    return {"windows_processed": windows_processed, "skills_updated": skills_updated}
+
+
+async def detect_usage_signals(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Hourly cron: check usage aggregates for threshold violations and trigger actions."""
+    pool = ctx["pool"]
+    settings: Any = ctx["settings"]
+    failure_rate_trigger: float = settings.pipeline.usage_failure_rate_trigger
+    success_drop_trigger: float = settings.pipeline.usage_success_rate_drop_trigger
+
+    alerts = 0
+    re_evals_triggered = 0
+    redis = ctx.get("redis")
+
+    async with pool.acquire() as conn:
+        usage_repo = ctx["usage_repo_factory"](conn)
+
+        # Get 7d aggregates with at least 10 total reports
+        aggregates_7d = await usage_repo.get_aggregates_above_threshold("7d", 10)
+
+        for agg in aggregates_7d:
+            total = agg.success_count + agg.partial_count + agg.failure_count
+            if total == 0:
+                continue
+
+            failure_rate = agg.failure_count / total
+            should_reeval = False
+
+            # Check high failure rate
+            if failure_rate > failure_rate_trigger:
+                logger.warning(
+                    "Signal: skill %s has %.0f%% failure rate (threshold %.0f%%)",
+                    agg.skill_id,
+                    failure_rate * 100,
+                    failure_rate_trigger * 100,
+                )
+                alerts += 1
+                should_reeval = True
+
+            # Check success rate drop vs 30d
+            agg_30d = await usage_repo.get_aggregate_for_skill(agg.skill_id, "30d")
+            if (
+                agg_30d is not None
+                and agg_30d.success_rate is not None
+                and agg.success_rate is not None
+                and (agg_30d.success_rate - agg.success_rate) > success_drop_trigger
+            ):
+                logger.warning(
+                    "Signal: skill %s success rate dropped %.0f%% -> %.0f%%",
+                    agg.skill_id,
+                    agg_30d.success_rate * 100,
+                    agg.success_rate * 100,
+                )
+                alerts += 1
+                should_reeval = True
+
+            if should_reeval and redis:
+                await redis.enqueue_job("run_eval_job", str(agg.skill_id), "usage_signal")
+                re_evals_triggered += 1
+
+    # --- Staleness detection ---
+    stale_marked = 0
+    staleness_days: int = settings.pipeline.staleness_window_days
+    async with pool.acquire() as conn:
+        skill_repo = ctx["skill_repo_factory"](conn)
+        stale_ids = await skill_repo.get_stale_candidates(staleness_days)
+        for sid in stale_ids:
+            await skill_repo.mark_stale(sid)
+            stale_marked += 1
+
+    if stale_marked:
+        logger.info("detect_usage_signals: marked %d skills as stale", stale_marked)
+
+    logger.info(
+        "detect_usage_signals: %d alerts, %d re-evaluations triggered, %d stale",
+        alerts,
+        re_evals_triggered,
+        stale_marked,
+    )
+    return {
+        "alerts": alerts,
+        "re_evals_triggered": re_evals_triggered,
+        "stale_marked": stale_marked,
     }
 
 
@@ -207,7 +504,12 @@ class WorkerSettings:
     Started with: ``uv run arq loom.worker.WorkerSettings``
     """
 
-    functions = [run_eval_job]
+    functions = [run_eval_job, run_behavioral_eval_job]
+    cron_jobs = [
+        cron(scheduled_reeval, weekday={6}, hour={3}, minute={17}),
+        cron(aggregate_usage, hour=None, minute={17}),  # every hour at :17
+        cron(detect_usage_signals, hour=None, minute={47}),  # every hour at :47
+    ]
     on_startup = startup
     on_shutdown = shutdown
     max_jobs = 5

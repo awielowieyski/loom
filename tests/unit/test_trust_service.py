@@ -139,3 +139,44 @@ class TestCheckPromotion:
         )
         assert decision.should_promote is False
         assert "safety" in decision.reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_behavioral_score_below_floor_blocks_promotion(self) -> None:
+        svc = _make_service(_make_eval())
+        decision = await svc.check_promotion(
+            skill_id=SKILL_ID,
+            current_tier=TrustTier.EXPERIMENTAL,
+            is_signed=True,
+            usage_count=20,
+            success_rate=0.95,
+            behavioral_score=0.40,
+        )
+        assert decision.should_promote is False
+        assert "behavioral" in decision.reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_behavioral_score_none_does_not_block(self) -> None:
+        """When behavioral_score is None (not yet evaluated), skip the check."""
+        svc = _make_service(_make_eval())
+        decision = await svc.check_promotion(
+            skill_id=SKILL_ID,
+            current_tier=TrustTier.EXPERIMENTAL,
+            is_signed=True,
+            usage_count=20,
+            success_rate=0.95,
+            behavioral_score=None,
+        )
+        assert decision.should_promote is True
+
+    @pytest.mark.asyncio
+    async def test_behavioral_score_above_floor_passes(self) -> None:
+        svc = _make_service(_make_eval())
+        decision = await svc.check_promotion(
+            skill_id=SKILL_ID,
+            current_tier=TrustTier.EXPERIMENTAL,
+            is_signed=True,
+            usage_count=20,
+            success_rate=0.95,
+            behavioral_score=0.80,
+        )
+        assert decision.should_promote is True

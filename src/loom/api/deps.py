@@ -6,10 +6,12 @@ from typing import Annotated
 import asyncpg
 from fastapi import Depends, Request
 
+from loom.db.repositories.behavioral_eval_repo import BehavioralEvalRepo
 from loom.db.repositories.capability_repo import CapabilityRepo
 from loom.db.repositories.category_repo import CategoryRepo
 from loom.db.repositories.eval_repo import EvalRepo
 from loom.db.repositories.skill_repo import SkillRepo
+from loom.db.repositories.usage_repo import UsageRepo
 from loom.services.capability_discovery import CapabilityDiscoveryService
 from loom.services.capability_registry import CapabilityRegistryService
 from loom.services.container import ServiceContainer
@@ -96,3 +98,17 @@ def get_unified_resolver(
     container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> UnifiedResolver:
     return container.unified_resolver_factory(skill_repo, capability_repo)
+
+
+def get_usage_repo(
+    conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
+) -> UsageRepo:
+    return container.usage_repo_factory(conn)
+
+
+def get_behavioral_eval_repo(
+    conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
+) -> BehavioralEvalRepo:
+    return container.behavioral_eval_repo_factory(conn)

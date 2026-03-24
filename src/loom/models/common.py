@@ -77,6 +77,32 @@ class DependencyDeclaration(BaseModel):
     trust_requirements: TrustRequirements = TrustRequirements()
 
 
+class UsageOutcome(StrEnum):
+    SUCCESS = "success"
+    PARTIAL = "partial"
+    FAILURE = "failure"
+
+
+class BehavioralEvalApplicability(StrEnum):
+    AUTO = "auto"
+    NOT_APPLICABLE = "not_applicable"
+    REQUIRED = "required"
+
+
+class AmendmentClassification(StrEnum):
+    REFINEMENT = "refinement"
+    REGRESSION = "regression"
+    VARIANT = "variant"
+    EXTENSION = "extension"
+    REJECTED = "rejected"
+
+
+class WindowType(StrEnum):
+    SEVEN_DAY = "7d"
+    THIRTY_DAY = "30d"
+    NINETY_DAY = "90d"
+
+
 class EvalStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
@@ -112,3 +138,4 @@ class QualityDimension(BaseModel):
 class EvalSpec(BaseModel):
     scenarios: list[EvalScenario] = []
     quality_dimensions: list[QualityDimension] = []
+    behavioral_eval: BehavioralEvalApplicability = BehavioralEvalApplicability.AUTO

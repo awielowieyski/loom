@@ -1,6 +1,7 @@
 """Skill repository with raw asyncpg SQL."""
 
 import uuid as uuid_mod
+from datetime import datetime
 from typing import Any
 
 import asyncpg
@@ -9,13 +10,15 @@ import numpy as np
 from loom.models.common import CostProfile, DependencyDeclaration, EvalSpec, Scope, TrustTier
 from loom.models.skill import Skill, SkillSummary, SkillVersion
 
-# Full column list for skills table (21 columns)
+# Full column list for skills table
 _SKILL_COLUMNS = (
     "id, slug, name, description, content, category_id, tags, scope, "
     "version, author_id, signature, trust_tier, cost_profile, "
     "cost_drivers, estimated_duration, dependencies, eval_spec, "
     "extends, embedding, eval_status, composite_score, "
-    "latest_eval_job_id, signature_key_fingerprint, created_at, updated_at"
+    "latest_eval_job_id, signature_key_fingerprint, "
+    "deprecated_at, successor_slug, stale_since, behavioral_score, "
+    "last_eval_at, resolution_count, created_at, updated_at"
 )
 
 # Lighter column list for ranking / summary use — excludes content, embedding, eval_spec
@@ -376,23 +379,110 @@ class SkillRepo:
         )
         return [_row_to_summary(row) for row in rows]
 
+    async def get_reeval_candidates(self, trust_tiers: list[str], limit: int) -> list[Skill]:
+        """Return skills ordered by oldest last_eval_at, limited to N.
+
+        Skills that have never been evaluated (last_eval_at IS NULL) are
+        returned first, followed by skills with the oldest evaluation.
+        """
+        placeholders = ", ".join(f"${i + 1}" for i in range(len(trust_tiers)))
+        params: list[Any] = [*trust_tiers, limit]
+        rows = await self._conn.fetch(
+            f"""
+            SELECT {_SKILL_COLUMNS}
+            FROM skills
+            WHERE trust_tier IN ({placeholders})
+            ORDER BY last_eval_at ASC NULLS FIRST
+            LIMIT ${len(params)}
+            """,  # noqa: S608
+            *params,
+        )
+        return [_row_to_skill(row) for row in rows]
+
+    async def count_by_trust_tiers(self, trust_tiers: list[str]) -> int:
+        """Count skills in the given trust tiers."""
+        placeholders = ", ".join(f"${i + 1}" for i in range(len(trust_tiers)))
+        row = await self._conn.fetchrow(
+            f"SELECT count(*) as cnt FROM skills WHERE trust_tier IN ({placeholders})",  # noqa: S608
+            *trust_tiers,
+        )
+        return int(row["cnt"]) if row else 0
+
     async def update_eval_fields(
         self,
         skill_id: uuid_mod.UUID,
         eval_status: str,
         composite_score: float | None = None,
         latest_eval_job_id: uuid_mod.UUID | None = None,
+        behavioral_score: float | None = None,
+        last_eval_at: datetime | None = None,
     ) -> None:
         """Update evaluation-related fields on a skill row."""
+        set_parts = ["eval_status = $1", "updated_at = now()"]
+        params: list[Any] = [eval_status]
+
+        if composite_score is not None:
+            params.append(composite_score)
+            set_parts.append(f"composite_score = ${len(params)}")
+
+        if latest_eval_job_id is not None:
+            params.append(latest_eval_job_id)
+            set_parts.append(f"latest_eval_job_id = ${len(params)}")
+
+        if behavioral_score is not None:
+            params.append(behavioral_score)
+            set_parts.append(f"behavioral_score = ${len(params)}")
+
+        if last_eval_at is not None:
+            params.append(last_eval_at)
+            set_parts.append(f"last_eval_at = ${len(params)}")
+
+        params.append(skill_id)
         await self._conn.execute(
-            """UPDATE skills
-               SET eval_status = $1,
-                   composite_score = $2,
-                   latest_eval_job_id = $3,
-                   updated_at = now()
-               WHERE id = $4""",
-            eval_status,
-            composite_score,
-            latest_eval_job_id,
+            f"UPDATE skills SET {', '.join(set_parts)} WHERE id = ${len(params)}",  # noqa: S608
+            *params,
+        )
+
+    # --- M4: Living registry lifecycle methods ---
+
+    async def increment_resolution_count(self, skill_id: uuid_mod.UUID) -> None:
+        """Atomically increment the resolution_count for a skill."""
+        await self._conn.execute(
+            "UPDATE skills SET resolution_count = resolution_count + 1 WHERE id = $1",
             skill_id,
         )
+
+    async def mark_stale(self, skill_id: uuid_mod.UUID) -> None:
+        """Set stale_since to now() for a skill that isn't already stale."""
+        await self._conn.execute(
+            "UPDATE skills SET stale_since = now() WHERE id = $1 AND stale_since IS NULL",
+            skill_id,
+        )
+
+    async def clear_stale(self, skill_id: uuid_mod.UUID) -> None:
+        """Clear stale_since when a skill gets new usage."""
+        await self._conn.execute(
+            "UPDATE skills SET stale_since = NULL WHERE id = $1",
+            skill_id,
+        )
+
+    async def mark_deprecated(self, skill_id: uuid_mod.UUID, successor_slug: str | None) -> None:
+        """Set deprecated_at and successor_slug on a skill."""
+        await self._conn.execute(
+            "UPDATE skills SET deprecated_at = now(), successor_slug = $2 WHERE id = $1",
+            skill_id,
+            successor_slug,
+        )
+
+    async def get_stale_candidates(self, staleness_window_days: int) -> list[uuid_mod.UUID]:
+        """Find skills with 0 usage reports in the time window, not already stale."""
+        rows = await self._conn.fetch(
+            """SELECT s.id FROM skills s
+               LEFT JOIN usage_reports ur ON ur.skill_id = s.id
+                 AND ur.created_at >= now() - ($1 || ' days')::interval
+               WHERE ur.id IS NULL
+                 AND s.stale_since IS NULL
+                 AND s.created_at < now() - ($1 || ' days')::interval""",
+            str(staleness_window_days),
+        )
+        return [row["id"] for row in rows]

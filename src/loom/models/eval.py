@@ -119,6 +119,7 @@ class EvalJob(BaseModel):
     sandbox_passed: bool | None = None
     overall_confidence: float | None = None
     evaluator_version: str = ""
+    behavioral_score: float | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
     created_at: datetime | None = None

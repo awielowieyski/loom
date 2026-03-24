@@ -7,10 +7,12 @@ from typing import TYPE_CHECKING
 
 from cachetools import TTLCache
 
+from loom.db.repositories.behavioral_eval_repo import BehavioralEvalRepo
 from loom.db.repositories.capability_repo import CapabilityRepo
 from loom.db.repositories.category_repo import CategoryRepo
 from loom.db.repositories.eval_repo import EvalRepo
 from loom.db.repositories.skill_repo import SkillRepo
+from loom.db.repositories.usage_repo import UsageRepo
 from loom.services.capability_discovery import CapabilityDiscoveryService
 from loom.services.capability_registry import CapabilityRegistryService
 from loom.services.discovery import DiscoveryService
@@ -20,6 +22,7 @@ from loom.services.registry import RegistryService
 from loom.services.score_aggregator import ScoreAggregator  # noqa: TC001
 from loom.services.static_analyser import StaticAnalyser  # noqa: TC001
 from loom.services.unified_resolver import UnifiedResolver
+from loom.services.usage_service import UsageService
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -52,6 +55,11 @@ class ServiceContainer:
     capability_registry_factory: Callable[[CapabilityRepo, CategoryRepo], CapabilityRegistryService]
     capability_discovery_factory: Callable[[CapabilityRepo, SkillRepo], CapabilityDiscoveryService]
     unified_resolver_factory: Callable[[SkillRepo, CapabilityRepo], UnifiedResolver]
+
+    # M4: living registry
+    usage_repo_factory: Callable[[asyncpg.Connection], UsageRepo]
+    behavioral_eval_repo_factory: Callable[[asyncpg.Connection], BehavioralEvalRepo]
+    usage_service_factory: Callable[[UsageRepo, SkillRepo], UsageService]
 
 
 async def create_container(settings: object) -> ServiceContainer:
@@ -117,6 +125,15 @@ async def create_container(settings: object) -> ServiceContainer:
             embed_cache=embed_cache,
         )
 
+    def _usage_repo(conn: asyncpg.Connection) -> UsageRepo:
+        return UsageRepo(conn)
+
+    def _behavioral_eval_repo(conn: asyncpg.Connection) -> BehavioralEvalRepo:
+        return BehavioralEvalRepo(conn)
+
+    def _usage_service(usage_repo: UsageRepo, skill_repo: SkillRepo) -> UsageService:
+        return UsageService(usage_repo=usage_repo, skill_repo=skill_repo)
+
     def _unified_resolver(skill_repo: SkillRepo, cap_repo: CapabilityRepo) -> UnifiedResolver:
         return UnifiedResolver(
             discovery_service=_discovery(skill_repo),
@@ -139,6 +156,9 @@ async def create_container(settings: object) -> ServiceContainer:
         capability_registry_factory=_capability_registry,
         capability_discovery_factory=_capability_discovery,
         unified_resolver_factory=_unified_resolver,
+        usage_repo_factory=_usage_repo,
+        behavioral_eval_repo_factory=_behavioral_eval_repo,
+        usage_service_factory=_usage_service,
     )
 
 

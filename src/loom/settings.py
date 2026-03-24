@@ -61,6 +61,36 @@ class PipelineConfig(BaseModel):
     max_steps: int = 50
     max_dependencies: int = 15
 
+    # M4: Behavioral evaluation
+    behavioral_runs_per_scenario: int = 3
+    behavioral_pass_threshold: float = 0.50
+    behavioral_floor_for_promotion: float = 0.60
+    runner_model: str | None = None  # defaults to llm.model
+    judge_model: str | None = None  # defaults to llm.model
+
+    # M4: Comparative evaluation
+    comparison_confidence_threshold: float = 0.60
+
+    # M4: Amendment triage
+    amendment_semantic_threshold_high: float = 0.95
+    amendment_semantic_threshold_low: float = 0.70
+
+    # M4: Usage signals
+    usage_failure_rate_trigger: float = 0.30
+    usage_success_rate_drop_trigger: float = 0.20
+    staleness_window_days: int = 90
+
+    # M4: Continuous re-evaluation
+    reeval_sample_percent: float = 0.20
+    reeval_drift_threshold: float = 0.15
+    model_drift_threshold: float = 0.10
+
+    # M4: Abuse prevention
+    submission_rate_limit_unverified: int = 5
+    submission_rate_limit_verified: int = 20
+    duplicate_similarity_reject: float = 0.95
+    duplicate_similarity_warn: float = 0.85
+
 
 class YamlSettingsSource(PydanticBaseSettingsSource):
     """Load settings from loom.yaml if it exists."""
