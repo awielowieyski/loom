@@ -16,8 +16,8 @@ interface SemanticMapProps {
   onClickNode: (node: MapNode) => void
 }
 
-const MAP_WIDTH = 2000
-const MAP_HEIGHT = 2000
+const MAP_WIDTH = 1200
+const MAP_HEIGHT = 900
 
 export function SemanticMap({ searchFilter, onHoverNode, onClickNode }: SemanticMapProps) {
   const { data, isLoading } = useEmbeddingMap()
@@ -25,8 +25,19 @@ export function SemanticMap({ searchFilter, onHoverNode, onClickNode }: Semantic
   const gRef = useRef<SVGGElement>(null)
   const [zoom, setZoom] = useState(1)
 
-  const scaleX = useMemo(() => createScaleX(MAP_WIDTH), [])
-  const scaleY = useMemo(() => createScaleY(MAP_HEIGHT), [])
+  // Build scales from actual data extent for tighter layout
+  const { scaleX, scaleY } = useMemo(() => {
+    if (!data) return { scaleX: createScaleX(MAP_WIDTH), scaleY: createScaleY(MAP_HEIGHT) }
+    const allItems = [...data.skills, ...data.capabilities]
+    if (allItems.length === 0) return { scaleX: createScaleX(MAP_WIDTH), scaleY: createScaleY(MAP_HEIGHT) }
+    const xs = allItems.map((i) => i.x)
+    const ys = allItems.map((i) => i.y)
+    const pad = 80
+    return {
+      scaleX: d3.scaleLinear().domain([Math.min(...xs), Math.max(...xs)]).range([pad, MAP_WIDTH - pad]),
+      scaleY: d3.scaleLinear().domain([Math.min(...ys), Math.max(...ys)]).range([pad, MAP_HEIGHT - pad]),
+    }
+  }, [data])
 
   // Build unified node list for rendering
   const { skillNodes, capabilityNodes, allNodes } = useMemo(() => {
@@ -116,8 +127,13 @@ export function SemanticMap({ searchFilter, onHoverNode, onClickNode }: Semantic
 
     d3.select(svg).call(zoomBehavior)
 
-    // Initial fit: center the map
-    const initialTransform = d3.zoomIdentity.translate(-MAP_WIDTH / 4, -MAP_HEIGHT / 4).scale(0.5)
+    // Initial fit: show full map
+    const containerWidth = svg.clientWidth || 800
+    const containerHeight = svg.clientHeight || 600
+    const fitScale = Math.min(containerWidth / MAP_WIDTH, containerHeight / MAP_HEIGHT) * 0.95
+    const tx = (containerWidth - MAP_WIDTH * fitScale) / 2
+    const ty = (containerHeight - MAP_HEIGHT * fitScale) / 2
+    const initialTransform = d3.zoomIdentity.translate(tx, ty).scale(fitScale)
     d3.select(svg).call(zoomBehavior.transform, initialTransform)
 
     return () => {

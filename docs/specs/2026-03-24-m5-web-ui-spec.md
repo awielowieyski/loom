@@ -944,3 +944,15 @@ The current seed skills/capabilities are minimal bootstrap data. Before wider re
 - Ensure skill content follows consistent markdown structure
 - Add more diverse examples across categories
 - Eventually: automated ingestion from the wider internet with quality gates
+
+### 13.3 Semantic Map: Pre-compute & Cache UMAP Coordinates
+
+**Problem**: The embedding map currently recomputes UMAP on every page load via `GET /api/v1/embeddings/map`. This is O(n²) and will not scale beyond a few hundred skills.
+
+**Proposed fix**:
+1. **Pre-compute**: Run UMAP when skills are submitted/updated and store `(x, y)` coordinates in the DB (new columns on skills/capabilities tables, or a dedicated `embedding_coordinates` table)
+2. **Serve cached**: The map endpoint returns pre-computed coordinates — no UMAP at request time
+3. **Recompute triggers**: New skill submitted, skill embedding updated, periodic batch job (e.g. nightly), or manual admin trigger
+4. **Incremental updates**: For small additions, consider approximate projection of new points into existing UMAP space rather than full recomputation
+
+**Priority**: Medium — works fine for current scale (~20 items) but will break at ~500+.
