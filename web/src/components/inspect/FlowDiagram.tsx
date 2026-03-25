@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { ReactFlow, Background, Controls, MiniMap } from '@xyflow/react'
+import { ReactFlow, Background, Controls } from '@xyflow/react'
 import type { Node, Edge } from '@xyflow/react'
 import dagre from 'dagre'
 import '@xyflow/react/dist/style.css'
@@ -10,8 +10,8 @@ import { DataFlowEdge } from './DataFlowEdge'
 import { cn } from '@/lib/utils'
 import type { Capability } from '@/types/api'
 
-const NODE_WIDTH = 200
-const NODE_HEIGHT = 80
+const NODE_WIDTH = 280
+const NODE_HEIGHT = 100
 
 const nodeTypes = { step: StepNode }
 const edgeTypes = { dataflow: DataFlowEdge }
@@ -19,7 +19,7 @@ const edgeTypes = { dataflow: DataFlowEdge }
 function buildLayout(capability: Capability): { nodes: Node[]; edges: Edge[] } {
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 80 })
+  g.setGraph({ rankdir: 'TB', nodesep: 40, ranksep: 60 })
 
   // Add nodes from steps
   const nodes: Node[] = capability.steps.map((step, i) => {
@@ -115,10 +115,6 @@ export function FlowDiagram({ capability, className }: FlowDiagramProps) {
       >
         <Background gap={16} size={1} />
         <Controls showInteractive={false} />
-        <MiniMap
-          nodeStrokeWidth={3}
-          className="!bg-muted/50"
-        />
       </ReactFlow>
     </div>
   )

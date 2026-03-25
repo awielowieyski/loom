@@ -25,7 +25,7 @@ function StepNodeComponent({ data }: NodeProps) {
   return (
     <div
       className={cn(
-        'rounded-lg bg-card px-3 py-2 text-sm ring-1 min-w-[160px] max-w-[240px] cursor-pointer hover:ring-foreground/40 transition-all',
+        'rounded-lg bg-card px-3 py-2 text-sm ring-1 min-w-[200px] max-w-[260px] cursor-pointer hover:ring-foreground/40 transition-all',
         nodeData.required
           ? 'ring-foreground/20'
           : 'ring-foreground/10 ring-dashed',
