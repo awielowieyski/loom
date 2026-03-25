@@ -22,7 +22,7 @@ export function getSkill(slug: string) {
 }
 
 export function searchSkills(query: string, type?: string) {
-  return apiGet<SkillSummary[]>('/skills/search', { q: query, type })
+  return apiGet<SkillSummary[]>('/skills/search', { query, type })
 }
 
 export function getSkillUsage(slug: string) {

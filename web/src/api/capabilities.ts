@@ -15,5 +15,5 @@ export function getCapability(slug: string) {
 }
 
 export function searchCapabilities(query: string) {
-  return apiGet<CapabilitySummary[]>('/capabilities/search', { q: query })
+  return apiGet<CapabilitySummary[]>('/capabilities/search', { query })
 }
