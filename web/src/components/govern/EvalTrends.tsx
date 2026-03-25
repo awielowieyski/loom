@@ -91,7 +91,7 @@ export function EvalTrends({ className }: EvalTrendsProps) {
                   backgroundColor: 'hsl(var(--popover))',
                   color: 'hsl(var(--popover-foreground))',
                 }}
-                formatter={(value: number) => value?.toFixed(3)}
+                formatter={(value) => typeof value === 'number' ? value.toFixed(3) : String(value ?? '')}
               />
               <Area
                 type="monotone"

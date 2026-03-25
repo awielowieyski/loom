@@ -119,7 +119,7 @@ export function buildAxisLines(size: number): { x1: number; y1: number; x2: numb
  */
 export function getAxisLabelPositions(
   size: number,
-): { axis: AxisName; x: number; y: number; anchor: string }[] {
+): { axis: AxisName; x: number; y: number; anchor: 'start' | 'middle' | 'end' }[] {
   const cx = size / 2
   const cy = size / 2
   const labelRadius = size * 0.48
@@ -127,7 +127,7 @@ export function getAxisLabelPositions(
   return AXES.map((axis, i) => {
     const pos = polarToCartesian(cx, cy, labelRadius, AXIS_ANGLES_DEG[i])
     const angle = AXIS_ANGLES_DEG[i]
-    let anchor = 'middle'
+    let anchor: 'start' | 'middle' | 'end' = 'middle'
     if (angle > 180 && angle < 360 && angle !== 270) anchor = 'end'
     if (angle > 0 && angle < 180) anchor = 'start'
     return { axis, x: pos.x, y: pos.y, anchor }

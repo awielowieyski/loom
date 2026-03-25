@@ -90,7 +90,8 @@ export function ContextToggles({ context, onContextChange, className }: ContextT
               min={0}
               max={3}
               step={1}
-              onValueChange={(val: number[]) => {
+              onValueChange={(val) => {
+                if (!Array.isArray(val)) return
                 onContextChange({ ...context, cost_budget: COST_LEVELS[val[0]] })
               }}
             />
