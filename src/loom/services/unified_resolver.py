@@ -1,6 +1,5 @@
 """UnifiedResolver: resolve either skills or capabilities from a single entry point."""
 
-import asyncio
 import uuid
 from typing import TYPE_CHECKING, Literal
 
@@ -47,10 +46,10 @@ class UnifiedResolver:
         cap_result: ResolvedCapability | ResolutionError | None = None
 
         if type_filter == "any":
-            skill_result, cap_result = await asyncio.gather(
-                self._skill_service.resolve(task_description, context=context),
-                self._capability_service.resolve(task_description, context=context),
-            )
+            # Sequential: both services share a single DB connection via FastAPI DI,
+            # and asyncpg connections can't run concurrent queries.
+            skill_result = await self._skill_service.resolve(task_description, context=context)
+            cap_result = await self._capability_service.resolve(task_description, context=context)
         elif type_filter == "skill":
             skill_result = await self._skill_service.resolve(task_description, context=context)
         else:
@@ -100,19 +99,18 @@ class UnifiedResolver:
     ) -> list["SkillSummary | CapabilitySummary"]:
         """Search across both skills and capabilities."""
         if type_filter == "any":
-            skills, caps = await asyncio.gather(
-                self._skill_service.search(
-                    query,
-                    category_id=category_id,
-                    trust_tier=trust_tier,
-                    cost_budget=cost_budget,
-                ),
-                self._capability_service.search(
-                    query,
-                    category_id=category_id,
-                    trust_tier=trust_tier,
-                    cost_budget=cost_budget,
-                ),
+            # Sequential: shared DB connection can't handle concurrent queries
+            skills = await self._skill_service.search(
+                query,
+                category_id=category_id,
+                trust_tier=trust_tier,
+                cost_budget=cost_budget,
+            )
+            caps = await self._capability_service.search(
+                query,
+                category_id=category_id,
+                trust_tier=trust_tier,
+                cost_budget=cost_budget,
             )
             return [*skills, *caps]
 
