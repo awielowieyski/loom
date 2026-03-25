@@ -8,9 +8,8 @@ import { AlternativeList } from '@/components/resolve/AlternativeList'
 import { ContextToggles } from '@/components/resolve/ContextToggles'
 import { ResolutionHistory, notifyHistoryChange } from '@/components/resolve/ResolutionHistory'
 import { addToHistory } from '@/lib/storage'
-import { searchSkills } from '@/api/skills'
-import { searchCapabilities } from '@/api/capabilities'
-import type { ResolutionContext, ResolvedResult, Alternative, SkillSummary, CapabilitySummary } from '@/types/api'
+import { unifiedSearch, type SearchResult } from '@/api/search'
+import type { ResolutionContext, ResolvedResult, Alternative } from '@/types/api'
 
 export const Route = createFileRoute('/')({
   component: ResolveView,
@@ -61,41 +60,34 @@ function EmptyState() {
   )
 }
 
-interface QuickResult {
-  skills: SkillSummary[]
-  capabilities: CapabilitySummary[]
+function isCapability(r: SearchResult): boolean {
+  return 'steps' in r || !('content' in r && 'eval_spec' in r)
 }
 
-function QuickResults({ results, onSelect }: { results: QuickResult; onSelect: (name: string) => void }) {
-  const hasResults = results.skills.length > 0 || results.capabilities.length > 0
-  if (!hasResults) return null
+function QuickResults({ results, onSelect }: { results: SearchResult[]; onSelect: (name: string) => void }) {
+  if (results.length === 0) return null
 
   return (
     <div className="rounded-xl border bg-card p-3 space-y-1">
       <p className="text-xs text-muted-foreground px-2 pb-1">Quick matches — press Enter to resolve with AI</p>
-      {results.skills.slice(0, 5).map((s) => (
-        <Link
-          key={s.slug}
-          to="/skills/$slug"
-          params={{ slug: s.slug }}
-          className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-accent/50 transition-colors"
-        >
-          <span className="text-xs font-medium bg-primary/10 text-primary px-1.5 py-0.5 rounded">skill</span>
-          <span className="text-sm font-medium truncate">{s.name}</span>
-          <span className="text-xs text-muted-foreground truncate ml-auto">{s.description?.slice(0, 60)}</span>
-        </Link>
-      ))}
-      {results.capabilities.slice(0, 3).map((c) => (
-        <button
-          key={c.slug}
-          onClick={() => onSelect(c.name)}
-          className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-accent/50 transition-colors w-full text-left"
-        >
-          <span className="text-xs font-medium bg-chart-2/20 text-chart-2 px-1.5 py-0.5 rounded">cap</span>
-          <span className="text-sm font-medium truncate">{c.name}</span>
-          <span className="text-xs text-muted-foreground truncate ml-auto">{c.description?.slice(0, 60)}</span>
-        </button>
-      ))}
+      {results.slice(0, 8).map((r) => {
+        const isCap = isCapability(r)
+        const route = isCap ? '/capabilities/$slug' as const : '/skills/$slug' as const
+        return (
+          <Link
+            key={r.slug}
+            to={route}
+            params={{ slug: r.slug }}
+            className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-accent/50 transition-colors"
+          >
+            <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${isCap ? 'bg-chart-2/20 text-chart-2' : 'bg-primary/10 text-primary'}`}>
+              {isCap ? 'cap' : 'skill'}
+            </span>
+            <span className="text-sm font-medium truncate">{r.name}</span>
+            <span className="text-xs text-muted-foreground truncate ml-auto">{r.description?.slice(0, 60)}</span>
+          </Link>
+        )
+      })}
     </div>
   )
 }
@@ -103,18 +95,15 @@ function QuickResults({ results, onSelect }: { results: QuickResult; onSelect: (
 function ResolveView() {
   const [context, setContext] = useState<ResolutionContext>({})
   const [result, setResult] = useState<ResolvedResult | null>(null)
-  const [quickResults, setQuickResults] = useState<QuickResult | null>(null)
+  const [quickResults, setQuickResults] = useState<SearchResult[] | null>(null)
 
   const { mutate, isPending } = useResolve()
 
   // Lightweight DB search on keystroke (no auth, fast)
   const handleSearch = useCallback(async (query: string) => {
     try {
-      const [skills, capabilities] = await Promise.all([
-        searchSkills(query),
-        searchCapabilities(query),
-      ])
-      setQuickResults({ skills, capabilities })
+      const results = await unifiedSearch(query)
+      setQuickResults(results)
     } catch {
       // Silently fail — typeahead is best-effort
     }

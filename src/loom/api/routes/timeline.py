@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime  # noqa: TC003 — needed at runtime by Pydantic
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,9 +11,7 @@ from pydantic import BaseModel
 
 from loom.api.deps import get_conn, get_skill_repo
 from loom.api.middleware import verify_api_key
-
-if TYPE_CHECKING:
-    from loom.db.repositories.skill_repo import SkillRepo
+from loom.db.repositories.skill_repo import SkillRepo  # noqa: TC001 — FastAPI needs this at runtime
 
 router = APIRouter(prefix="/api/v1", tags=["timeline"])
 
