@@ -21,7 +21,7 @@ def _make_usage_service(usage_repo: UsageRepo, skill_repo: SkillRepo) -> UsageSe
 @router.post("/usage/report", status_code=201, response_model=UsageReport)
 async def report_usage(
     report: UsageReportCreate,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     usage_repo: Annotated[UsageRepo, Depends(get_usage_repo)],
     skill_repo: Annotated[SkillRepo, Depends(get_skill_repo)],
 ) -> UsageReport:
@@ -39,7 +39,7 @@ async def report_usage(
 @router.get("/skills/{slug}/usage", response_model=UsageStats)
 async def get_usage_stats(
     slug: str,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     usage_repo: Annotated[UsageRepo, Depends(get_usage_repo)],
     skill_repo: Annotated[SkillRepo, Depends(get_skill_repo)],
 ) -> UsageStats:

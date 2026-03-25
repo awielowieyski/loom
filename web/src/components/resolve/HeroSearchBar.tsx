@@ -4,29 +4,32 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
 interface HeroSearchBarProps {
-  onQueryChange: (query: string) => void
+  /** Fires on debounced keystroke — use for lightweight search/typeahead */
+  onSearch?: (query: string) => void
+  /** Fires on Enter — use for full LLM-powered resolve */
+  onResolve: (query: string) => void
   isLoading?: boolean
   className?: string
 }
 
-export function HeroSearchBar({ onQueryChange, isLoading, className }: HeroSearchBarProps) {
+export function HeroSearchBar({ onSearch, onResolve, isLoading, className }: HeroSearchBarProps) {
   const [value, setValue] = useState('')
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  // Stable ref to always call the latest callback without re-triggering the effect
-  const callbackRef = useRef(onQueryChange)
-  useEffect(() => {
-    callbackRef.current = onQueryChange
-  }, [onQueryChange])
 
-  // Debounced callback — only depends on value, not on the callback identity
+  const searchRef = useRef(onSearch)
+  useEffect(() => {
+    searchRef.current = onSearch
+  }, [onSearch])
+
+  // Debounced typeahead — lightweight search on every keystroke
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
 
-    if (value.trim()) {
+    if (value.trim() && searchRef.current) {
       timerRef.current = setTimeout(() => {
-        callbackRef.current(value.trim())
-      }, 300)
+        searchRef.current?.(value.trim())
+      }, 200)
     }
 
     return () => {
@@ -34,12 +37,12 @@ export function HeroSearchBar({ onQueryChange, isLoading, className }: HeroSearc
     }
   }, [value])
 
-  const resolveNow = useCallback(() => {
+  const handleSubmit = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
     if (value.trim()) {
-      callbackRef.current(value.trim())
+      onResolve(value.trim())
     }
-  }, [value])
+  }, [value, onResolve])
 
   const clear = useCallback(() => {
     setValue('')
@@ -49,7 +52,7 @@ export function HeroSearchBar({ onQueryChange, isLoading, className }: HeroSearc
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      resolveNow()
+      handleSubmit()
     } else if (e.key === 'Escape') {
       e.preventDefault()
       clear()

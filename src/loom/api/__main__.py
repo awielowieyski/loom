@@ -1,4 +1,6 @@
-"""Entry point: uv run python -m loom.api"""
+"""Entry point: uv run python -m loom.api [--reload]"""
+
+import sys
 
 import uvicorn
 
@@ -12,7 +14,7 @@ def main() -> None:
         factory=True,
         host=settings.api.host,
         port=settings.api.port,
-        reload=False,
+        reload="--reload" in sys.argv,
     )
 
 

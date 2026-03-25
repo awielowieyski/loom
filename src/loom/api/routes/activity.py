@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/v1/activity", tags=["activity"])
 
 @router.get("/feed", response_model=list[ActivityEvent])
 async def get_activity_feed(
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     service: Annotated[ActivityFeedService, Depends(get_activity_feed_service)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     since: Annotated[datetime | None, Query()] = None,

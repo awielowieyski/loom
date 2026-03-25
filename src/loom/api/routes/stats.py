@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/v1/stats", tags=["stats"])
 @router.get("/overview")
 async def get_overview(
     service: Annotated[StatsService, Depends(get_stats_service)],
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
 ) -> dict[str, Any]:
     """Return high-level registry health overview."""
     return await service.get_overview()
@@ -23,7 +23,7 @@ async def get_overview(
 @router.get("/eval-trends")
 async def get_eval_trends(
     service: Annotated[StatsService, Depends(get_stats_service)],
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     category: Annotated[str | None, Query()] = None,
     weeks: Annotated[int, Query(ge=1, le=52)] = 12,
 ) -> dict[str, Any]:
@@ -34,7 +34,7 @@ async def get_eval_trends(
 @router.get("/usage-heatmap")
 async def get_usage_heatmap(
     service: Annotated[StatsService, Depends(get_stats_service)],
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     period_type: Annotated[str, Query(pattern="^(week|day)$")] = "week",
     periods: Annotated[int, Query(ge=1, le=52)] = 12,
 ) -> dict[str, Any]:

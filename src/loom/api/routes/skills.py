@@ -27,7 +27,7 @@ class ResolveRequest(BaseModel):
 
 @router.get("", response_model=list[SkillSummary])
 async def list_skills(
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     registry: Annotated[RegistryService, Depends(get_registry_service)],
     trust_tier: Annotated[TrustTier | None, Query()] = None,
 ) -> list[SkillSummary]:
@@ -37,7 +37,7 @@ async def list_skills(
 
 @router.get("/search", response_model=list[SkillSummary])
 async def search_skills(
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     discovery: Annotated[DiscoveryService, Depends(get_discovery_service)],
     query: Annotated[str, Query()],
     trust_tier: Annotated[TrustTier | None, Query()] = None,
@@ -54,7 +54,7 @@ async def search_skills(
 @router.post("/resolve")
 async def resolve_skill(
     body: ResolveRequest,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     discovery: Annotated[DiscoveryService, Depends(get_discovery_service)],
 ) -> ResolvedSkill:
     """Resolve the best skill for a task description."""
@@ -76,7 +76,7 @@ async def resolve_skill(
 async def update_skill(
     slug: str,
     body: SkillUpdate,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     registry: Annotated[RegistryService, Depends(get_registry_service)],
 ) -> Skill:
     """Update a skill with a new version."""
@@ -92,7 +92,7 @@ async def update_skill(
 @router.get("/{slug}", response_model=Skill)
 async def get_skill(
     slug: str,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     registry: Annotated[RegistryService, Depends(get_registry_service)],
     version: Annotated[str | None, Query()] = None,
 ) -> Skill:

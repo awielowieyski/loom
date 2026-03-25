@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/v1/categories", tags=["categories"])
 
 @router.get("", response_model=list[Category])
 async def list_categories(
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     category_repo: Annotated[CategoryRepo, Depends(get_category_repo)],
 ) -> list[Category]:
     """List all categories."""

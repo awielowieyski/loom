@@ -32,7 +32,8 @@ function eventIcon(type: ActivityEvent['event_type']) {
 }
 
 function FeedItem({ event }: { event: ActivityEvent }) {
-  const link = `/skills/${event.slug}`
+  const isCapability = event.event_type === 'capability_submitted'
+  const link = isCapability ? `/capabilities/${event.slug}` : `/skills/${event.slug}`
 
   return (
     <div className="flex items-start gap-2 py-1.5 text-xs">

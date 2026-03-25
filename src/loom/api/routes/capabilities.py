@@ -31,7 +31,7 @@ class ResolveCapabilityRequest(BaseModel):
 @router.post("", response_model=Capability, status_code=status.HTTP_201_CREATED)
 async def create_capability(
     body: CapabilityCreate,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     registry: Annotated[CapabilityRegistryService, Depends(get_capability_registry_service)],
 ) -> Capability:
     """Create a new capability."""
@@ -46,7 +46,7 @@ async def create_capability(
 
 @router.get("", response_model=list[CapabilitySummary])
 async def list_capabilities(
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     registry: Annotated[CapabilityRegistryService, Depends(get_capability_registry_service)],
     trust_tier: Annotated[TrustTier | None, Query()] = None,
 ) -> list[CapabilitySummary]:
@@ -56,7 +56,7 @@ async def list_capabilities(
 
 @router.get("/search", response_model=list[CapabilitySummary])
 async def search_capabilities(
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     discovery: Annotated[CapabilityDiscoveryService, Depends(get_capability_discovery_service)],
     query: Annotated[str, Query()],
     trust_tier: Annotated[TrustTier | None, Query()] = None,
@@ -73,7 +73,7 @@ async def search_capabilities(
 @router.post("/resolve", response_model=ResolvedCapability)
 async def resolve_capability(
     body: ResolveCapabilityRequest,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     discovery: Annotated[CapabilityDiscoveryService, Depends(get_capability_discovery_service)],
 ) -> ResolvedCapability:
     """Resolve the best capability for a task description."""
@@ -107,7 +107,7 @@ async def resolve_capability(
 async def update_capability(
     slug: str,
     body: CapabilityUpdate,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     registry: Annotated[CapabilityRegistryService, Depends(get_capability_registry_service)],
 ) -> Capability:
     """Update a capability with a new version."""
@@ -123,7 +123,7 @@ async def update_capability(
 @router.get("/{slug}", response_model=Capability)
 async def get_capability(
     slug: str,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     registry: Annotated[CapabilityRegistryService, Depends(get_capability_registry_service)],
     version: Annotated[str | None, Query()] = None,
 ) -> Capability:

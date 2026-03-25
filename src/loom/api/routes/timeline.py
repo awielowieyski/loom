@@ -130,7 +130,7 @@ async def _build_timeline(
 )
 async def get_skill_timeline(
     slug: str,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     skill_repo: Annotated[SkillRepo, Depends(get_skill_repo)],
     conn: Annotated[asyncpg.Connection, Depends(get_conn)],
 ) -> TimelineResponse:

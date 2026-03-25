@@ -21,7 +21,7 @@ class ReviewSubmission(BaseModel):
 @router.get("/queue")
 async def get_queue(
     service: Annotated[GovernanceService, Depends(get_governance_service)],
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     reason: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -34,7 +34,7 @@ async def get_queue(
 async def submit_review(
     body: ReviewSubmission,
     service: Annotated[GovernanceService, Depends(get_governance_service)],
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
 ) -> dict[str, Any]:
     """Submit a governance review decision."""
     return await service.submit_review(

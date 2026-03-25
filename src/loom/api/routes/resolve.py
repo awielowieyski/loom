@@ -22,7 +22,7 @@ class UnifiedResolveRequest(BaseModel):
 @router.post("/resolve", response_model=ResolvedResult)
 async def unified_resolve(
     body: UnifiedResolveRequest,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     resolver: Annotated[UnifiedResolver, Depends(get_unified_resolver)],
 ) -> ResolvedResult:
     """Resolve the best skill or capability for a task description."""

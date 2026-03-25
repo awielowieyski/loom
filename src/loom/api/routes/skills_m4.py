@@ -31,7 +31,7 @@ class CompareRequest(BaseModel):
 @router.get("/skills/{slug}/behavioral", response_model=list[BehavioralRunResult])
 async def get_behavioral_results(
     slug: str,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     skill_repo: Annotated[SkillRepo, Depends(get_skill_repo)],
     behavioral_repo: Annotated[BehavioralEvalRepo, Depends(get_behavioral_eval_repo)],
 ) -> list[BehavioralRunResult]:
@@ -50,7 +50,7 @@ async def get_behavioral_results(
 async def deprecate_skill(
     slug: str,
     body: DeprecateRequest,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     usage_repo: Annotated[UsageRepo, Depends(get_usage_repo)],
     skill_repo: Annotated[SkillRepo, Depends(get_skill_repo)],
 ) -> dict[str, Any]:
@@ -69,7 +69,7 @@ async def deprecate_skill(
 async def compare_skills(
     slug: str,
     body: CompareRequest,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     skill_repo: Annotated[SkillRepo, Depends(get_skill_repo)],
 ) -> dict[str, Any]:
     """Trigger head-to-head comparison. Returns 202 with job info (async)."""

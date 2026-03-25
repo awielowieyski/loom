@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/v1", tags=["eval"])
 @router.get("/skills/{skill_id}/eval", response_model=EvalJob | None)
 async def get_latest_eval(
     skill_id: uuid.UUID,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     eval_repo: Annotated[EvalRepo, Depends(get_eval_repo)],
 ) -> EvalJob | None:
     """Return the latest evaluation result for a skill."""
@@ -26,7 +26,7 @@ async def get_latest_eval(
 @router.get("/eval/jobs/{job_id}", response_model=EvalJob)
 async def get_eval_job(
     job_id: uuid.UUID,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     eval_repo: Annotated[EvalRepo, Depends(get_eval_repo)],
 ) -> EvalJob:
     """Return an evaluation job by ID."""
@@ -42,7 +42,7 @@ async def get_eval_job(
 @router.get("/skills/{skill_id}/trust", response_model=list[TrustAuditEntry])
 async def get_trust_history(
     skill_id: uuid.UUID,
-    _: Annotated[str, Depends(verify_api_key)],
+    _: Annotated[str | None, Depends(verify_api_key)],
     eval_repo: Annotated[EvalRepo, Depends(get_eval_repo)],
 ) -> list[TrustAuditEntry]:
     """Return trust tier change history for a skill."""

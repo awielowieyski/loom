@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useState, useCallback } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useResolve } from '@/hooks/useResolve'
 import { HeroSearchBar } from '@/components/resolve/HeroSearchBar'
 import { PrimaryResult } from '@/components/resolve/PrimaryResult'
@@ -8,7 +8,9 @@ import { AlternativeList } from '@/components/resolve/AlternativeList'
 import { ContextToggles } from '@/components/resolve/ContextToggles'
 import { ResolutionHistory, notifyHistoryChange } from '@/components/resolve/ResolutionHistory'
 import { addToHistory } from '@/lib/storage'
-import type { ResolutionContext, ResolvedResult, Alternative } from '@/types/api'
+import { searchSkills } from '@/api/skills'
+import { searchCapabilities } from '@/api/capabilities'
+import type { ResolutionContext, ResolvedResult, Alternative, SkillSummary, CapabilitySummary } from '@/types/api'
 
 export const Route = createFileRoute('/')({
   component: ResolveView,
@@ -52,6 +54,48 @@ function EmptyState() {
         Describe a task in natural language and Loom will resolve the best-matching skill or
         capability from the registry, ranked by trust, quality, and fit.
       </p>
+      <p className="text-xs text-muted-foreground/60">
+        Type to search · Press Enter to resolve with AI
+      </p>
+    </div>
+  )
+}
+
+interface QuickResult {
+  skills: SkillSummary[]
+  capabilities: CapabilitySummary[]
+}
+
+function QuickResults({ results, onSelect }: { results: QuickResult; onSelect: (name: string) => void }) {
+  const hasResults = results.skills.length > 0 || results.capabilities.length > 0
+  if (!hasResults) return null
+
+  return (
+    <div className="rounded-xl border bg-card p-3 space-y-1">
+      <p className="text-xs text-muted-foreground px-2 pb-1">Quick matches — press Enter to resolve with AI</p>
+      {results.skills.slice(0, 5).map((s) => (
+        <Link
+          key={s.slug}
+          to="/skills/$slug"
+          params={{ slug: s.slug }}
+          className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-accent/50 transition-colors"
+        >
+          <span className="text-xs font-medium bg-primary/10 text-primary px-1.5 py-0.5 rounded">skill</span>
+          <span className="text-sm font-medium truncate">{s.name}</span>
+          <span className="text-xs text-muted-foreground truncate ml-auto">{s.description?.slice(0, 60)}</span>
+        </Link>
+      ))}
+      {results.capabilities.slice(0, 3).map((c) => (
+        <button
+          key={c.slug}
+          onClick={() => onSelect(c.name)}
+          className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-accent/50 transition-colors w-full text-left"
+        >
+          <span className="text-xs font-medium bg-chart-2/20 text-chart-2 px-1.5 py-0.5 rounded">cap</span>
+          <span className="text-sm font-medium truncate">{c.name}</span>
+          <span className="text-xs text-muted-foreground truncate ml-auto">{c.description?.slice(0, 60)}</span>
+        </button>
+      ))}
     </div>
   )
 }
@@ -59,11 +103,27 @@ function EmptyState() {
 function ResolveView() {
   const [context, setContext] = useState<ResolutionContext>({})
   const [result, setResult] = useState<ResolvedResult | null>(null)
+  const [quickResults, setQuickResults] = useState<QuickResult | null>(null)
 
   const { mutate, isPending } = useResolve()
 
+  // Lightweight DB search on keystroke (no auth, fast)
+  const handleSearch = useCallback(async (query: string) => {
+    try {
+      const [skills, capabilities] = await Promise.all([
+        searchSkills(query),
+        searchCapabilities(query),
+      ])
+      setQuickResults({ skills, capabilities })
+    } catch {
+      // Silently fail — typeahead is best-effort
+    }
+  }, [])
+
+  // Full LLM resolve on Enter
   const handleResolve = useCallback(
     (query: string) => {
+      setQuickResults(null) // clear typeahead
       mutate(
         { task_description: query, context },
         {
@@ -80,6 +140,7 @@ function ResolveView() {
 
   const handleAlternativeSelect = useCallback(
     (alt: Alternative) => {
+      setQuickResults(null)
       mutate(
         { task_description: alt.skill.name, context },
         {
@@ -100,9 +161,17 @@ function ResolveView() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
-      <HeroSearchBar onQueryChange={handleResolve} isLoading={isPending} />
+      <HeroSearchBar
+        onSearch={handleSearch}
+        onResolve={handleResolve}
+        isLoading={isPending}
+      />
 
       <ContextToggles context={context} onContextChange={setContext} />
+
+      {quickResults && !isPending && !result && (
+        <QuickResults results={quickResults} onSelect={handleResolve} />
+      )}
 
       {isPending && !result && <LoadingSkeleton />}
 
@@ -113,7 +182,7 @@ function ResolveView() {
         </div>
       )}
 
-      {!result && !isPending && <EmptyState />}
+      {!result && !isPending && !quickResults && <EmptyState />}
 
       <ResolutionHistory onSelect={handleResolve} />
     </div>
