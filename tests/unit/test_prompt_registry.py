@@ -55,9 +55,9 @@ class TestSecurityInvariants:
         """Every system prompt MUST mention injection detection."""
         for variant in _REGISTRY[dimension]:
             prompt_lower = variant.system_prompt.lower()
-            assert (
-                "injection" in prompt_lower
-            ), f"{variant.name} missing injection detection mention"
+            assert "injection" in prompt_lower, (
+                f"{variant.name} missing injection detection mention"
+            )
 
     @pytest.mark.parametrize("dimension", list(EvalDimension))
     def test_no_format_markers(self, dimension: EvalDimension) -> None:

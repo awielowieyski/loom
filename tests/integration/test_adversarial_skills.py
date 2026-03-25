@@ -228,9 +228,9 @@ class TestAdversarialSkills:
 
         # After normalisation the text reads "Ignore previous instructions".
         patterns = {ind.pattern for ind in report.injection_indicators}
-        assert (
-            "ignore_instructions" in patterns
-        ), f"Expected ignore_instructions after normalisation, got {patterns}"
+        assert "ignore_instructions" in patterns, (
+            f"Expected ignore_instructions after normalisation, got {patterns}"
+        )
 
         # Content hash should be based on normalised (zero-width stripped) content.
         assert report.content_hash.startswith("sha256:")
@@ -354,9 +354,9 @@ class TestAdversarialSkills:
         report = analyser.analyse(skill)
         assert report.injection_indicators, "Expected injection indicators"
         patterns = {ind.pattern for ind in report.injection_indicators}
-        assert (
-            "identity_override" in patterns
-        ), f"Expected identity_override indicator, got {patterns}"
+        assert "identity_override" in patterns, (
+            f"Expected identity_override indicator, got {patterns}"
+        )
 
     @pytest.mark.asyncio
     async def test_subtle_combined_attack(self) -> None:
@@ -388,9 +388,9 @@ class TestAdversarialSkills:
             "prompt_tags",
             "identity_override",
         }
-        assert (
-            len(detected_types) >= 2
-        ), f"Expected at least 2 different injection pattern types, got {detected_types}"
+        assert len(detected_types) >= 2, (
+            f"Expected at least 2 different injection pattern types, got {detected_types}"
+        )
 
         pipeline = _make_pipeline(
             score=0.3,
@@ -426,9 +426,9 @@ class TestAdversarialSkills:
         analyser = StaticAnalyser()
         report = analyser.analyse(skill)
         assert report.passed is True
-        assert (
-            report.injection_indicators == []
-        ), f"Expected no injection indicators, got {report.injection_indicators}"
+        assert report.injection_indicators == [], (
+            f"Expected no injection indicators, got {report.injection_indicators}"
+        )
 
         # Full pipeline: clean LLM results, should pass.
         pipeline = _make_pipeline(score=0.85, injection_detected=False)
