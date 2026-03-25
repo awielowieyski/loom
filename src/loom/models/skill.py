@@ -31,6 +31,8 @@ class SkillCreate(BaseModel):
     dependencies: DependencyDeclaration = DependencyDeclaration()
     eval_spec: EvalSpec = EvalSpec()
     extends: str | None = None
+    source_uri: str | None = None
+    license: str | None = None
 
 
 class Skill(BaseModel):
@@ -57,6 +59,8 @@ class Skill(BaseModel):
     composite_score: float | None = None
     latest_eval_job_id: str | None = None
     signature_key_fingerprint: str | None = None
+    source_uri: str | None = None
+    license: str | None = None
     # M4: living registry columns
     deprecated_at: datetime | None = None
     successor_slug: str | None = None

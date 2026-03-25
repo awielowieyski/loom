@@ -17,6 +17,7 @@ _SKILL_COLUMNS = (
     "cost_drivers, estimated_duration, dependencies, eval_spec, "
     "extends, embedding, eval_status, composite_score, "
     "latest_eval_job_id, signature_key_fingerprint, "
+    "source_uri, license, "
     "deprecated_at, successor_slug, stale_since, behavioral_score, "
     "last_eval_at, resolution_count, created_at, updated_at"
 )
@@ -89,6 +90,8 @@ class SkillRepo:
         extends: str | None = None,
         signature: str | None = None,
         embedding: list[float] | None = None,
+        source_uri: str | None = None,
+        license: str | None = None,
     ) -> Skill:
         """Insert a new skill and initial version record, returning the Skill."""
         cost_drivers = cost_drivers or []
@@ -101,11 +104,13 @@ class SkillRepo:
             INSERT INTO skills (
                 slug, name, description, content, category_id, tags, scope, version,
                 author_id, signature, trust_tier, cost_profile, cost_drivers,
-                estimated_duration, dependencies, eval_spec, extends, embedding
+                estimated_duration, dependencies, eval_spec, extends, embedding,
+                source_uri, license
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8,
                 $9, $10, $11, $12, $13,
-                $14, $15, $16, $17, $18
+                $14, $15, $16, $17, $18,
+                $19, $20
             )
             RETURNING {_SKILL_COLUMNS}
             """,
@@ -127,6 +132,8 @@ class SkillRepo:
             eval_dict,
             extends,
             _to_vector(embedding),
+            source_uri,
+            license,
         )
 
         skill = _row_to_skill(row)

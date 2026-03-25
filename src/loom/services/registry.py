@@ -82,6 +82,8 @@ class RegistryService:
             estimated_duration=_coerce_duration(data.estimated_duration, "fast"),
             extends=data.extends,
             embedding=embedding,
+            source_uri=data.source_uri,
+            license=data.license,
         )
 
     async def update_skill(
