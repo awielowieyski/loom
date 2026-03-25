@@ -1,4 +1,5 @@
 import { Calendar, Tag, Package } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import { useCapability } from '@/hooks/useCapability'
 import { formatRelativeTime } from '@/lib/format'
@@ -102,24 +103,30 @@ export function CapabilityDetail({ slug, className }: CapabilityDetailProps) {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Steps</h2>
         <div className="space-y-2">
-          {capability.steps.map((step, i) => (
-            <div
-              key={i}
-              className={cn(
-                'flex items-center gap-3 rounded-lg border px-3 py-2',
-                !step.required && 'border-dashed',
-              )}
-            >
-              <span className="text-sm font-medium">{step.skill_ref}</span>
-              <span className="text-xs text-muted-foreground">{step.role}</span>
-              <TrustBadge tier={capability.trust_tier} size="sm" />
-              {!step.required && (
-                <Badge variant="secondary" className="text-[10px]">
-                  optional
-                </Badge>
-              )}
-            </div>
-          ))}
+          {capability.steps.map((step, i) => {
+            // Extract slug from loom://slug format
+            const slug = step.skill_ref.replace(/^loom:\/\//, '')
+            return (
+              <Link
+                key={i}
+                to="/skills/$slug"
+                params={{ slug }}
+                className={cn(
+                  'flex items-center gap-3 rounded-lg border px-3 py-2 hover:bg-accent/50 transition-colors',
+                  !step.required && 'border-dashed',
+                )}
+              >
+                <span className="text-sm font-medium font-mono">{step.skill_ref}</span>
+                <span className="text-xs text-muted-foreground">{step.role}</span>
+                <TrustBadge tier={capability.trust_tier} size="sm" />
+                {!step.required && (
+                  <Badge variant="secondary" className="text-[10px]">
+                    optional
+                  </Badge>
+                )}
+              </Link>
+            )
+          })}
         </div>
       </section>
 

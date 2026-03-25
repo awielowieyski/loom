@@ -40,9 +40,11 @@ function buildLayout(capability: Capability): { nodes: Node[]; edges: Edge[] } {
   })
 
   // Add edges from data_flow
+  // data_flow uses bare slugs (e.g. "review-security") while steps use loom:// URIs
+  const normalize = (ref: string) => ref.replace(/^loom:\/\//, '')
   const edges: Edge[] = capability.data_flow.map((flow, i) => {
-    const sourceIdx = capability.steps.findIndex((s) => s.skill_ref === flow.from_step)
-    const targetIdx = capability.steps.findIndex((s) => s.skill_ref === flow.to_step)
+    const sourceIdx = capability.steps.findIndex((s) => normalize(s.skill_ref) === flow.from_step)
+    const targetIdx = capability.steps.findIndex((s) => normalize(s.skill_ref) === flow.to_step)
     const sourceId = `step-${sourceIdx >= 0 ? sourceIdx : 0}`
     const targetId = `step-${targetIdx >= 0 ? targetIdx : 0}`
 

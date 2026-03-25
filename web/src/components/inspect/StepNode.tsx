@@ -2,6 +2,7 @@ import { useState, memo } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import type { NodeProps } from '@xyflow/react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import { TrustBadge } from '@/components/shared/TrustBadge'
 import type { TrustTier } from '@/types/api'
@@ -18,15 +19,18 @@ export interface StepNodeData {
 function StepNodeComponent({ data }: NodeProps) {
   const [expanded, setExpanded] = useState(false)
   const nodeData = data as StepNodeData
+  const navigate = useNavigate()
+  const slug = nodeData.skillRef.replace(/^loom:\/\//, '')
 
   return (
     <div
       className={cn(
-        'rounded-lg bg-card px-3 py-2 text-sm ring-1 min-w-[160px] max-w-[240px]',
+        'rounded-lg bg-card px-3 py-2 text-sm ring-1 min-w-[160px] max-w-[240px] cursor-pointer hover:ring-foreground/40 transition-all',
         nodeData.required
           ? 'ring-foreground/20'
           : 'ring-foreground/10 ring-dashed',
       )}
+      onClick={() => navigate({ to: '/skills/$slug', params: { slug } })}
     >
       <Handle type="target" position={Position.Top} className="!bg-foreground/30 !w-2 !h-2" />
 
