@@ -23,7 +23,8 @@ def compute_content_hash(content: str) -> str:
 def slugify(text: str, max_length: int = 80) -> str:
     """Convert text to a valid kebab-case slug."""
     slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
-    return slug[:max_length]
+    slug = slug[:max_length]
+    return slug if slug else "unnamed"
 
 
 def detect_format(content: str) -> str:
@@ -43,12 +44,12 @@ def parse_frontmatter(content: str) -> tuple[dict[str, object], str]:
     if not stripped.startswith("---"):
         return {}, content
 
-    end = stripped.find("---", 3)
-    if end == -1:
+    match = re.search(r"\n---\s*\n", stripped[3:])
+    if match is None:
         return {}, content
-
-    frontmatter_text = stripped[3:end].strip()
-    body = stripped[end + 3 :].strip()
+    end = match.start() + 3  # offset from stripped[3:]
+    frontmatter_text = stripped[3 : 3 + end].strip()
+    body = stripped[3 + end + match.end() - match.start() :].strip()
 
     try:
         metadata = yaml.safe_load(frontmatter_text) or {}

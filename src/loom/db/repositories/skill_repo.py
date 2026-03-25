@@ -510,6 +510,7 @@ class SkillRepo:
 
     async def get_by_source_pattern(self, pattern: str, limit: int = 50) -> list[Skill]:
         """Return skills whose source_uri matches an ILIKE pattern."""
+        escaped = pattern.replace("%", "\\%").replace("_", "\\_")
         rows = await self._conn.fetch(
             f"""
             SELECT {_SKILL_COLUMNS}
@@ -518,7 +519,7 @@ class SkillRepo:
             ORDER BY created_at ASC
             LIMIT $2
             """,
-            f"%{pattern}%",
+            f"%{escaped}%",
             limit,
         )
         return [_row_to_skill(row) for row in rows]

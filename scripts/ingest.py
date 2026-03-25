@@ -28,6 +28,7 @@ import asyncpg
 # ---------------------------------------------------------------------------
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from typing import TYPE_CHECKING  # noqa: E402
 
@@ -218,18 +219,15 @@ def print_dry_run(candidates: list[Candidate]) -> None:
 
 async def ingest_approved(
     candidates: list[Candidate],
-    conn: asyncpg.Connection,  # type: ignore[type-arg]
+    pool: asyncpg.Pool,  # type: ignore[type-arg]
     settings: LoomSettings,
 ) -> tuple[int, int, int]:
     """Ingest approved candidates into the database. Returns (created, skipped, errors)."""
-    skill_repo = SkillRepo(conn)
-    category_repo = CategoryRepo(conn)
-    ingestion_repo = IngestionRepo(conn)
-    eval_service = EvalService()
-    registry = RegistryService(skill_repo, category_repo, eval_service)
-
-    author_id = await ensure_seed_user(conn)
     has_embedder = _get_embedder(settings) is not None
+
+    # Resolve seed user with a short-lived connection
+    async with pool.acquire() as conn:
+        author_id = await ensure_seed_user(conn)
 
     created = 0
     skipped = 0
@@ -241,15 +239,7 @@ async def ingest_approved(
         sc = c.skill_create
         print(f"  Ingesting {sc.slug} ...")
 
-        # Ensure category hierarchy
-        try:
-            await ensure_category_hierarchy(category_repo, sc.category_slug)
-        except Exception as exc:  # noqa: BLE001
-            print(f"    [error] category creation failed: {exc}")
-            errors += 1
-            continue
-
-        # Generate embedding
+        # Generate embedding (no DB connection held during slow API call)
         embedding = None
         if has_embedder:
             embed_text = f"{sc.name}\n{sc.description}\n{sc.content}"
@@ -257,33 +247,49 @@ async def ingest_approved(
             if embedding:
                 print(f"    [embed] {len(embedding)}-dim vector")
 
-        # Create skill via RegistryService
-        try:
-            skill = await registry.create_skill(sc, author_id, embedding=embedding)
-            print(f"    [+] skill created: {skill.slug} (id={skill.id})")
-        except Exception as exc:  # noqa: BLE001
-            print(f"    [error] create_skill failed: {exc}")
-            errors += 1
-            continue
+        # Acquire connection per-skill for DB operations
+        async with pool.acquire() as conn:
+            skill_repo = SkillRepo(conn)
+            category_repo = CategoryRepo(conn)
+            ingestion_repo = IngestionRepo(conn)
+            eval_service = EvalService()
+            registry = RegistryService(skill_repo, category_repo, eval_service)
 
-        # Record provenance
-        try:
-            await ingestion_repo.create(
-                source_type=c.item.source_type,
-                source_uri=c.item.source_uri,
-                content_hash=c.content_hash,
-                skill_id=skill.id,
-                skill_version=sc.version,
-                raw_metadata={
-                    "repo_owner": c.item.repo_owner,
-                    "repo_name": c.item.repo_name,
-                    "file_path": c.item.file_path,
-                    "commit_sha": c.item.commit_sha,
-                    "detected_license": c.item.detected_license,
-                },
-            )
-        except Exception as exc:  # noqa: BLE001
-            print(f"    [warn] provenance record failed: {exc}")
+            # Ensure category hierarchy
+            try:
+                await ensure_category_hierarchy(category_repo, sc.category_slug)
+            except Exception as exc:  # noqa: BLE001
+                print(f"    [error] category creation failed: {exc}")
+                errors += 1
+                continue
+
+            # Create skill via RegistryService
+            try:
+                skill = await registry.create_skill(sc, author_id, embedding=embedding)
+                print(f"    [+] skill created: {skill.slug} (id={skill.id})")
+            except Exception as exc:  # noqa: BLE001
+                print(f"    [error] create_skill failed: {exc}")
+                errors += 1
+                continue
+
+            # Record provenance
+            try:
+                await ingestion_repo.create(
+                    source_type=c.item.source_type,
+                    source_uri=c.item.source_uri,
+                    content_hash=c.content_hash,
+                    skill_id=skill.id,
+                    skill_version=sc.version,
+                    raw_metadata={
+                        "repo_owner": c.item.repo_owner,
+                        "repo_name": c.item.repo_name,
+                        "file_path": c.item.file_path,
+                        "commit_sha": c.item.commit_sha,
+                        "detected_license": c.item.detected_license,
+                    },
+                )
+            except Exception as exc:  # noqa: BLE001
+                print(f"    [warn] provenance record failed: {exc}")
 
         created += 1
 
@@ -361,7 +367,12 @@ async def main() -> None:
 
         # --approve: connect to DB and ingest
         settings = LoomSettings()
-        print(f"Connecting to database: {settings.database.url!r}")
+        from urllib.parse import urlparse
+
+        _parsed = urlparse(settings.database.url)
+        _redacted = f"{_parsed.hostname}:{_parsed.port}{_parsed.path}"
+        print(f"Connecting to database: {_redacted}")
+        del _parsed, _redacted
         url = settings.database.url.replace("postgresql+asyncpg://", "postgresql://")
         pool = await asyncpg.create_pool(url, min_size=1, max_size=5, init=_init_conn)
         assert pool is not None
@@ -378,16 +389,16 @@ async def main() -> None:
             ingestion_repo = IngestionRepo(conn)
             await check_db_duplicates(candidates, skill_repo, ingestion_repo)
 
-            new_count = sum(1 for c in candidates if c.skip_reason is None)
-            skip_count = sum(1 for c in candidates if c.skip_reason is not None)
-            print(f"\n{new_count} new skills to ingest, {skip_count} to skip\n")
+        new_count = sum(1 for c in candidates if c.skip_reason is None)
+        skip_count = sum(1 for c in candidates if c.skip_reason is not None)
+        print(f"\n{new_count} new skills to ingest, {skip_count} to skip\n")
 
-            if new_count == 0:
-                print("Nothing new to ingest.")
-                await pool.close()
-                return
+        if new_count == 0:
+            print("Nothing new to ingest.")
+            await pool.close()
+            return
 
-            created, skipped, errors = await ingest_approved(candidates, conn, settings)
+        created, skipped, errors = await ingest_approved(candidates, pool, settings)
 
         await pool.close()
 

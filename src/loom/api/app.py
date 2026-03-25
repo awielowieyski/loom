@@ -1,5 +1,6 @@
 """FastAPI application factory."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -7,6 +8,8 @@ from fastapi import FastAPI
 
 from loom.services.container import close_container, create_container
 from loom.settings import LoomSettings
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -17,17 +20,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.container = container
 
     # Create arq Redis pool for job enqueueing (eval trigger, etc.)
-    from arq import create_pool as create_arq_pool
+    arq_pool = None
+    try:
+        from arq import create_pool as create_arq_pool
 
-    from loom.worker import _redis_settings_from_url
+        from loom.worker import _redis_settings_from_url
 
-    arq_pool = await create_arq_pool(_redis_settings_from_url(settings.redis.url))
+        arq_pool = await create_arq_pool(_redis_settings_from_url(settings.redis.url))
+    except Exception:
+        logger.warning("Redis unavailable — background job enqueueing disabled", exc_info=True)
     app.state.arq_pool = arq_pool
 
     try:
         yield
     finally:
-        await arq_pool.close()
+        if arq_pool is not None:
+            await arq_pool.close()
         await close_container(container)
 
 

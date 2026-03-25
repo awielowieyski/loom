@@ -32,7 +32,6 @@ async def run_evaluation(
     llm_evaluator: LLMEvaluator | None = None,
     score_aggregator: ScoreAggregator | None = None,
     runs_per_dimension: int = 3,
-    enqueue_behavioral: bool = False,
 ) -> dict[str, Any]:
     """Run a full evaluation on a skill.
 
@@ -47,7 +46,6 @@ async def run_evaluation(
         llm_evaluator: Optional pre-built LLMEvaluator (created from settings if None).
         score_aggregator: Optional pre-built ScoreAggregator (created from settings if None).
         runs_per_dimension: Number of LLM evaluation runs per dimension.
-        enqueue_behavioral: If True, dispatch behavioral eval via Redis after pass.
 
     Returns:
         Dict with keys: job_id, passed, composite_score.
