@@ -9,7 +9,16 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 
 
 class DatabaseConfig(BaseModel):
-    url: str = "postgresql+asyncpg://loom:loom@localhost:5434/loom"
+    host: str = "localhost"
+    port: int = 5434
+    name: str = "loom"
+    user: str = "loom"
+    password: str = "loom"
+    url: str = ""
+
+    def model_post_init(self, __context: Any) -> None:
+        if not self.url:
+            self.url = f"postgresql+asyncpg://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
 
 
 class EmbeddingConfig(BaseModel):
@@ -43,7 +52,13 @@ class APIConfig(BaseModel):
 
 
 class RedisConfig(BaseModel):
-    url: str = "redis://localhost:6380"
+    host: str = "localhost"
+    port: int = 6380
+    url: str = ""
+
+    def model_post_init(self, __context: Any) -> None:
+        if not self.url:
+            self.url = f"redis://{self.host}:{self.port}"
 
 
 class PipelineConfig(BaseModel):
@@ -112,6 +127,7 @@ class LoomSettings(BaseSettings):
         env_nested_delimiter="__",
         env_file=".env",
         env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     database: DatabaseConfig = DatabaseConfig()

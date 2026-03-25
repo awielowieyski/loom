@@ -4,7 +4,7 @@
       "command": "uv",
       "args": ["run", "python", "-m", "loom.mcp"],
       "env": {
-        "LOOM_DATABASE__URL": "postgresql+asyncpg://loom:loom@localhost:5434/loom"
+        "LOOM_DATABASE__PORT": "5434"
       }
     }
   }

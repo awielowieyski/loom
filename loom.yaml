@@ -1,5 +1,9 @@
 database:
-  url: "postgresql+asyncpg://loom:loom@localhost:5434/loom"
+  host: "localhost"
+  port: 5434
+  name: "loom"
+  user: "loom"
+  password: "loom"
 
 embedding:
   provider: "openrouter"

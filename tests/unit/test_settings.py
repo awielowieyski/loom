@@ -6,13 +6,14 @@ from loom.settings import LoomSettings
 def test_settings_loads_defaults():
     """Settings should load from loom.yaml with sensible defaults."""
     # Clear any CI env overrides so we test the actual yaml defaults
-    env_backup = os.environ.pop("LOOM_DATABASE__URL", None)
+    env_keys = ["LOOM_DATABASE__URL", "LOOM_DATABASE__PORT"]
+    backup = {k: os.environ.pop(k) for k in env_keys if k in os.environ}
     try:
         settings = LoomSettings()
+        assert settings.database.port == 5434
         assert settings.database.url == "postgresql+asyncpg://loom:loom@localhost:5434/loom"
     finally:
-        if env_backup is not None:
-            os.environ["LOOM_DATABASE__URL"] = env_backup
+        os.environ.update(backup)
     assert settings.embedding.model == "openai/text-embedding-3-small"
     assert settings.embedding.dimensions == 1536
     assert settings.llm.provider == "openrouter"
