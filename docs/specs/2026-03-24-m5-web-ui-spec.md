@@ -956,3 +956,109 @@ The current seed skills/capabilities are minimal bootstrap data. Before wider re
 4. **Incremental updates**: For small additions, consider approximate projection of new points into existing UMAP space rather than full recomputation
 
 **Priority**: Medium — works fine for current scale (~20 items) but will break at ~500+.
+
+---
+
+## 14. Versioning & Provenance — Assessment and Roadmap
+
+### 14.1 Current State
+
+The versioning system follows an **immutable-append model** (like Git):
+- `skills` table: always reflects the latest version (denormalized for fast reads)
+- `skill_versions` table: immutable historical record of every version, with full content snapshots
+- Unique constraint on `(skill_id, version)` prevents duplicate versions
+- Same pattern for capabilities via `capability_versions`
+
+**What's wired up today:**
+| Aspect | Status | Notes |
+|--------|--------|-------|
+| Version history | ✅ | `skill_versions` table with full content snapshots |
+| Eval per version | ✅ | `eval_jobs.skill_version` ties eval to specific version |
+| Usage per version | ✅ | `usage_reports.skill_version` tracks per-version usage |
+| Version pinning in API | ✅ | `GET /skills/{slug}?version=X` returns specific version |
+| Version pinning in extends | ✅ | `loom://slug@version` syntax in extends URIs |
+| Cryptographic signing | ✅ | ed25519 signing of `(content, version, deps, eval_spec)` canonical hash |
+| Author tracking | ✅ | `author_id` FK on both skills and skill_versions |
+| Comparative eval | ✅ | Stores `skill_a_version` + `skill_b_version` for head-to-head |
+
+### 14.2 Gaps — Versioning
+
+**Gap V1: No version format validation**
+Versions are plain strings with no validation. Clients can submit "1", "banana", "v1.0-rc". We should enforce semantic versioning (major.minor.patch) to enable version comparison and compatibility reasoning.
+
+**Gap V2: Embeddings are per-skill, not per-version**
+The `skills.embedding` column stores a single vector overwritten on each update. If a skill's content changes significantly between v1 and v2, vector search can't distinguish them. For version-aware resolution, we need per-version embeddings — either a new `skill_version_embeddings` table or adding an embedding column to `skill_versions`.
+
+**Gap V3: No "active version" concept**
+The `skills` table always reflects the latest version. If v3 introduces a regression, there's no way to "roll back" — you'd have to publish v4 with the v2 content. We should add an `active_version` field to the `skills` table, distinct from `latest_version`, allowing a maintainer to pin the recommended version.
+
+**Gap V4: Deprecation is skill-level, not version-level**
+`deprecated_at` and `successor_slug` live on the `skills` table. Can't express "v1 is deprecated, use v2" — only "entire skill is deprecated, use this other skill". Should add version-level deprecation (on `skill_versions` table or a new `version_deprecations` table).
+
+**Gap V5: No version constraints in extends/capabilities**
+If a capability step references `loom://foo` (no version pin), it silently gets whatever version is current. If `loom://foo@1.0.0` is pinned but v2.0.0 exists, no warning is raised. We need:
+- Default pinning: when a capability is created, resolve unpinned refs to the current version and record them
+- Staleness detection: warn when pinned versions are outdated
+- Compatibility markers: `breaking_change: true` on version records that aren't backward-compatible
+
+**Gap V6: No version ordering or comparison**
+Without semver parsing, the system can't determine if v2.0.0 > v1.5.3, whether an update is a major/minor/patch bump, or whether two versions are compatible. This matters for:
+- Auto-updating capability step references on minor/patch bumps
+- Blocking auto-updates on major bumps (breaking changes)
+- Sorting version history chronologically (currently relies on `created_at`, not version number)
+
+### 14.3 Gaps — Provenance
+
+**What exists:**
+- `author_id` on skills and versions (tracks who authored each version)
+- `signature` + `signature_key_fingerprint` for cryptographic provenance (ed25519)
+- `content_hash` on eval jobs (snapshot of what was evaluated)
+- `changelog` on version records
+
+**Gap P1: No source tracking for external skills**
+There's no `source_uri` field to record where a skill came from (GitHub repo, ClawHub, manual authoring). Critical for:
+- Re-fetching/syncing from upstream sources
+- Deduplication across ingestion runs
+- Trust assessment (a skill from a reputable GitHub repo vs an anonymous submission)
+- Audit trail for the living feed
+
+**Proposed schema addition** (`ingestion_sources` table):
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID | PK |
+| `source_type` | text | `github`, `manual`, `clawhub`, `skillsmp` |
+| `source_uri` | text | e.g. `github:owner/repo/path@commitsha` |
+| `content_hash` | text | SHA-256 of raw source content |
+| `skill_id` | UUID | FK → skills |
+| `skill_version` | text | Version created from this source |
+| `ingested_at` | timestamptz | When we fetched it |
+| `raw_metadata` | JSONB | Source-specific metadata (repo stars, last commit date, license, etc.) |
+
+Plus a `source_uri` column on the `skills` table (nullable — null for manually authored skills).
+
+**Gap P2: No content integrity chain**
+The signing service exists but isn't wired into the submission flow — skills can be submitted without signatures. For a trust-based system, we should:
+- Make signing optional but tracked (signed vs unsigned is a trust signal)
+- Verify signatures on read if present
+- Include signature status in the eval pipeline's trust assessment
+
+**Gap P3: No license/attribution tracking**
+When ingesting from GitHub, we need to respect and record the source license. Should add `license` field to skills and ingestion sources.
+
+### 14.4 Recommended Priority
+
+**Before ingestion pipeline (Chunk 3 of current plan):**
+1. P1: Add `source_uri` to skills + `ingestion_sources` table (migration)
+2. V1: Add semver validation on skill creation/update
+
+**Before wider release:**
+3. V3: Add `active_version` concept (decouple from `latest_version`)
+4. V4: Version-level deprecation
+5. V2: Per-version embeddings
+6. P3: License tracking
+
+**Future (M6+ timeframe):**
+7. V5: Version constraints in extends/capabilities
+8. V6: Semver comparison and compatibility logic
+9. P2: Signature enforcement and verification in eval pipeline
