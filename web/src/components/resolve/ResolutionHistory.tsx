@@ -25,6 +25,7 @@ function formatTimestamp(ts: number): string {
 // Simple event emitter for cross-component history updates
 const listeners = new Set<() => void>()
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function notifyHistoryChange() {
   listeners.forEach((l) => l())
 }

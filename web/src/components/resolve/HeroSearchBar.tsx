@@ -15,7 +15,9 @@ export function HeroSearchBar({ onQueryChange, isLoading, className }: HeroSearc
   const inputRef = useRef<HTMLInputElement>(null)
   // Stable ref to always call the latest callback without re-triggering the effect
   const callbackRef = useRef(onQueryChange)
-  callbackRef.current = onQueryChange
+  useEffect(() => {
+    callbackRef.current = onQueryChange
+  }, [onQueryChange])
 
   // Debounced callback — only depends on value, not on the callback identity
   useEffect(() => {

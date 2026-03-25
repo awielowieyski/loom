@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createFileRoute } from '@tanstack/react-router'
 import { Fingerprint } from '@/components/shared/Fingerprint'
 import { TrustBadge } from '@/components/shared/TrustBadge'

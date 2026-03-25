@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createFileRoute } from '@tanstack/react-router'
 import { SkillDetail } from '@/components/inspect/SkillDetail'
 import { TrustJourney } from '@/components/inspect/TrustJourney'
