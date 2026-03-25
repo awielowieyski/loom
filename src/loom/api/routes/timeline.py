@@ -91,7 +91,7 @@ async def _build_timeline(
                 timestamp=row["created_at"],
                 event_type=event_type,
                 detail=(
-                    f"Trust tier {row['previous_tier']} -> {row['new_tier']}" f" ({row['reason']})"
+                    f"Trust tier {row['previous_tier']} -> {row['new_tier']} ({row['reason']})"
                 ),
             )
         )

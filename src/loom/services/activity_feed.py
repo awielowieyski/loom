@@ -132,8 +132,7 @@ class ActivityFeedService:
                 slug=row["slug"],
                 name=row["name"],
                 detail=(
-                    f"Evaluation completed for '{row['name']}'"
-                    f" (score: {row['composite_score']})"
+                    f"Evaluation completed for '{row['name']}' (score: {row['composite_score']})"
                 ),
             )
             for row in rows
