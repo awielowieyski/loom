@@ -117,12 +117,12 @@ async def test_real_llm_eval_e2e() -> None:
 
     # Step 11: Assertions
     assert result is not None, "Result should not be None"
-    assert result.content_hash.startswith(
-        "sha256:"
-    ), f"Expected sha256: prefix, got {result.content_hash[:10]}"
-    assert (
-        0.0 <= result.composite_score <= 1.0
-    ), f"Composite score {result.composite_score} not in [0, 1]"
+    assert result.content_hash.startswith("sha256:"), (
+        f"Expected sha256: prefix, got {result.content_hash[:10]}"
+    )
+    assert 0.0 <= result.composite_score <= 1.0, (
+        f"Composite score {result.composite_score} not in [0, 1]"
+    )
     assert result.evaluator_version, "Evaluator version should be set"
     assert structural.passed, f"Structural report should pass, errors: {structural.errors}"
     assert len(raw_dims) == 4, f"Expected 4 dimensions, got {len(raw_dims)}"
@@ -134,8 +134,8 @@ async def test_real_llm_eval_e2e() -> None:
         for run in runs:
             assert isinstance(run, DimensionResult)
             assert 0.0 <= run.score <= 1.0, f"Score {run.score} out of range for {dim.value}"
-            assert (
-                0.0 <= run.confidence <= 1.0
-            ), f"Confidence {run.confidence} out of range for {dim.value}"
+            assert 0.0 <= run.confidence <= 1.0, (
+                f"Confidence {run.confidence} out of range for {dim.value}"
+            )
 
     print("\nAll assertions passed!")

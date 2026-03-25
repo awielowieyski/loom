@@ -25,12 +25,18 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(title="Loom", version="0.1.0", lifespan=lifespan)
 
+    from loom.api.routes.activity import router as activity_router
     from loom.api.routes.capabilities import router as capabilities_router
     from loom.api.routes.categories import router as categories_router
+    from loom.api.routes.embeddings import router as embeddings_router
     from loom.api.routes.eval import router as eval_router
+    from loom.api.routes.governance import router as governance_router
     from loom.api.routes.health import router as health_router
+    from loom.api.routes.resolve import router as resolve_router
     from loom.api.routes.skills import router as skills_router
     from loom.api.routes.skills_m4 import router as skills_m4_router
+    from loom.api.routes.stats import router as stats_router
+    from loom.api.routes.timeline import router as timeline_router
     from loom.api.routes.usage import router as usage_router
 
     app.include_router(health_router)
@@ -40,5 +46,11 @@ def create_app() -> FastAPI:
     app.include_router(capabilities_router)
     app.include_router(usage_router)
     app.include_router(skills_m4_router)
+    app.include_router(resolve_router)
+    app.include_router(activity_router)
+    app.include_router(embeddings_router)
+    app.include_router(stats_router)
+    app.include_router(governance_router)
+    app.include_router(timeline_router)
 
     return app

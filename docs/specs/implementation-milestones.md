@@ -478,65 +478,198 @@ M4i (Behavioral Eval) ──→ M4ii (Comparative Eval + Amendment Triage)
 
 ## M5: Web UI + Community
 
-**Thesis proved:** Humans can browse, contribute, and curate the registry through a web interface. Category stewards have governance tools. The community contribution workflow is operational end-to-end.
+**Thesis proved:** Humans can browse, contribute, and curate the registry through a web interface that makes resolution — not browsing — the primary interaction. The UI surfaces Loom's resolution engine as an explorable landscape with governance tools for category stewards.
 
-**What you can demo:** Open the Loom web UI. Browse skills by category with filtering. Click into a skill and see its eval scores, behavioral eval results, usage stats, version history, and trust tier. Submit a new skill through the contribution form — it enters the eval pipeline. Review a flagged amendment in the steward queue. View the quality dashboard: eval trends, usage heatmap, trust tier distribution, stale/deprecated skills.
+**What you can demo:** Open the Loom web UI. Type a task description — live resolution shows the best skill with alternatives and rejection rationale. Toggle context constraints and watch resolution change. Zoom out on the semantic landscape to see skill clusters by category; zoom in to see individual fingerprints. Click a skill to inspect its eval history, behavioral scores, trust journey, and usage stats. Submit a new skill through the contribution form — it enters the eval pipeline. Review a flagged amendment in the steward queue. View the governance dashboard: eval trends, usage heatmap, trust tier distribution.
 
-### Web Application
+**Full design:** [M5 Web UI Spec](2026-03-24-m5-web-ui-spec.md) — resolution-first UX, semantic landscape, skill fingerprints, four views, component architecture, security model.
 
-- [ ] React SPA with TypeScript
-- [ ] OAuth login (GitHub, Google) for human contributors
-- [ ] Responsive design for desktop and tablet
+M5 is divided into four sub-milestones that sequence from foundation through views to governance and polish:
 
-### Browse & Search
+```
+M5i (Foundation + Resolve) ──→ M5ii (Explore + Inspect)
+                                        │
+                                        ▼
+                                 M5iii (Govern + Auth)
+                                        │
+                                        ▼
+                                 M5iv (Polish + Contribution)
+```
 
-- [ ] Browse skills and capabilities with category filtering
-- [ ] Full-text and semantic search
-- [ ] Skill detail view: content, eval scores, behavioral eval results, usage stats, version history, trust tier
-- [ ] Capability detail view: steps, data flow, resolved plan preview
+### M5i: Foundation + Resolve View
 
-### Contribution Workflow
+**Proves:** The resolution-first UX concept works. Users can resolve skills through a browser.
 
-- [ ] Submit new skill form with live validation
-- [ ] Submit amendment to existing skill
-- [ ] Amendment diff view: side-by-side comparison with triage classification
-- [ ] Submission status tracking: eval pipeline progress, results
+#### Project Setup
+- [ ] Vite project scaffold with React 19 + TypeScript
+- [ ] Tailwind CSS + shadcn/ui integration
+- [ ] TanStack Router setup with route structure
+- [ ] TanStack Query setup with API client layer
+- [ ] Base layout: header navigation, responsive shell
+- [ ] Type definitions mirroring existing API response shapes
 
-### Steward Tools
+#### Resolve View
+- [ ] Hero search bar with debounced resolution (300ms)
+- [ ] Primary result card with full detail
+- [ ] Alternatives list with rejection rationale
+- [ ] Context toggles: available_tools, trust_floor, cost_budget
+- [ ] Resolution history (localStorage-backed)
+- [ ] Loading states, empty states, error handling
 
-- [ ] Review queue: skills awaiting human review (low-confidence evals, injection flags, mixed amendments)
-- [ ] Review interface: eval fragments, scores, indicators, approve/reject actions
-- [ ] Tier promotion interface: override auto-promotion decisions with audit trail
-- [ ] Flagged skill management: community-reported skills pending review
+#### Skill Fingerprint Component
+- [ ] SVG-based 5-axis radar with cardinal spline interpolation
+- [ ] Three sizes: thumbnail (32px), card (64px), hero (200px)
+- [ ] Color intensity mapping to confidence
+- [ ] Glow effect for behavioral score
+- [ ] Interactive hover labels on hero size
 
-### Quality Dashboard
+#### Living Feed Sidebar
+- [ ] Recent activity feed component
+- [ ] Polling-based updates from listing endpoints
+- [ ] Collapsible on smaller viewports
 
-- [ ] Eval score trends over time (per skill, per category)
-- [ ] Usage heatmap: resolution frequency by category and time
-- [ ] Trust tier distribution: how many skills at each tier
-- [ ] Stale and deprecated skills overview
-- [ ] Behavioral eval coverage: percentage of skills with behavioral scores
+### M5ii: Explore + Inspect
+
+**Proves:** The registry is navigable as a spatial landscape and individual skills are deeply inspectable.
+
+#### Semantic Landscape
+- [ ] `GET /api/v1/embeddings/map` backend endpoint (UMAP/t-SNE projection)
+- [ ] D3/visx canvas with pan/zoom interaction
+- [ ] Skill nodes with fingerprint thumbnails
+- [ ] Capability nodes with edges to constituent skills
+- [ ] Cluster labels from category names
+- [ ] Visual encoding: trust tier → size, type → color, quality → opacity
+- [ ] Search overlay: highlight matching nodes, fade others
+- [ ] Click node → slide-out detail panel
+
+#### Inspect Views
+- [ ] Skill detail: header, description, content preview, large fingerprint
+- [ ] Eval history (scores over versions)
+- [ ] Usage stats display (success rate, resolution count, avg runtime)
+- [ ] Trust journey timeline
+- [ ] `GET /api/v1/skills/{slug}/timeline` backend endpoint
+- [ ] Capability flow diagram (React Flow): steps as nodes, data flow as edges
+- [ ] Step nodes expandable to show embedded skill content
+- [ ] Alternatives comparison and version diff views
+
+### M5iii: Govern + Auth
+
+**Proves:** Stewards can govern the registry through a web interface. OAuth enables human identity.
+
+#### Authentication
+- [ ] GitHub + Google OAuth provider integration
+- [ ] JWT token management (access + refresh)
+- [ ] `users` table migration: `oauth_provider`, `oauth_id`, `role`, etc.
+- [ ] Auth middleware for role-gated endpoints
+- [ ] Login/logout UI in header
+
+#### Governance Dashboard
+- [ ] `GET /api/v1/stats/overview` endpoint — registry health metrics
+- [ ] `GET /api/v1/stats/eval-trends` endpoint — score distribution over time
+- [ ] `GET /api/v1/stats/usage-heatmap` endpoint — resolution frequency by category × time
+- [ ] Health cards, eval trends chart, usage heatmap visualization
+
+#### Review Queue
+- [ ] `GET /api/v1/governance/queue` endpoint — items needing review
+- [ ] `POST /api/v1/governance/review` endpoint — approve/reject/request-changes
+- [ ] Review interface: eval fragments, scores, injection indicators
+- [ ] Promotion queue with override controls
+- [ ] Breaking change reports
+
+### M5iv: Polish + Contribution
+
+**Proves:** The full community contribution workflow is operational. The UI is production-quality.
+
+#### Contribution Workflow
+- [ ] New skill submission form with live validation
+- [ ] Content editor with markdown preview
+- [ ] Eval spec builder: scenarios with input_context, success_criteria
+- [ ] Amendment submission with side-by-side diff preview
+- [ ] Submission status tracking (eval pipeline progress)
+
+#### Polish
+- [ ] Framer Motion page transitions and micro-interactions
+- [ ] Responsive design (desktop + tablet)
+- [ ] Route-based code splitting
+- [ ] TanStack Query cache tuning and prefetching
+- [ ] Skeleton loading states throughout
 
 ### Deliverable
 
-- Production-ready web UI for browsing, contributing, and curating skills
+- Resolution-first web UI with live constraint-aware resolution
+- Semantic landscape for spatial exploration of the skill registry
+- Skill fingerprint visualization (5-axis eval radar)
+- Capability flow diagrams (React Flow)
 - Full community contribution workflow (submit, amend, review)
-- Category steward governance tools
-- Quality dashboard with observable metrics
-- OAuth authentication for human users
+- Governance dashboard with health metrics, eval trends, and usage heatmap
+- OAuth authentication (GitHub, Google) with role-based access
+- 7 new backend endpoints for embeddings, stats, governance, and timeline
 
 ---
 
-## M6: Corporate Loom
+## M6: Auth, Pricing & Metadata Visibility
 
-**Thesis proved:** The business model works. Organisations pay for private Loom instances that compose with the public registry. The three-tier resolution chain (local -> corporate -> community) is operational.
+**Thesis proved:** Individual identity enables trust attribution, pricing transparency, and controlled visibility. Users authenticate, see what things cost, and have fine-grained control over what metadata is visible.
+
+**What you can demo:** A contributor logs in with GitHub, submits a skill, and sees their name on it. The skill's cost profile is visible to resolving agents. A steward reviews the skill with full audit trail showing who submitted it, when, and why it was flagged. A user browsing the registry sees pricing tiers and can filter by cost. Author reputation (based on contribution history and eval outcomes) is visible on skill detail pages.
+
+### Identity & Authentication
+
+- [ ] OAuth providers: GitHub, Google (authorization code flow)
+- [ ] JWT token management: short-lived access (15min), refresh tokens (7d, httpOnly)
+- [ ] User profile: display name, avatar, OAuth provider, contribution history
+- [ ] API key management: generate/revoke API keys for agent access
+- [ ] Session management: login, logout, token refresh
+
+### Roles & Permissions
+
+- [ ] Role hierarchy: viewer → contributor → steward → admin
+- [ ] Role-gated UI: Govern view restricted to steward+, contribution forms require contributor+
+- [ ] Role-gated API: governance endpoints require steward role, mutation endpoints require contributor
+- [ ] Author attribution: skills/capabilities linked to authenticated user, visible in UI
+
+### Pricing & Cost Visibility
+
+- [ ] Cost profile display: free/low/medium/high shown on skill cards and detail views
+- [ ] Cost budget filtering: resolve/search respect cost_budget constraint from authenticated context
+- [ ] Cost breakdown: per-step cost profiles in capability flow diagram
+- [ ] Aggregate cost estimation: capability total cost = sum of step costs
+- [ ] Cost trends in governance dashboard
+
+### Metadata Visibility Controls
+
+- [ ] Privacy-aware resolution: `privacy_floor` context parameter filters by `privacy_impact` metadata
+- [ ] `privacy_impact` filtering in resolve and search ranking
+- [ ] Author controls: opt-in/out of usage analytics on their skills
+- [ ] Data classification visibility: clear labeling of what data a skill accesses/processes
+
+### Author Reputation
+
+- [ ] Contribution history: skills submitted, eval outcomes, promotion rate
+- [ ] Account standing: quarantine history, rejection rate
+- [ ] Reputation score: composite of contribution quality and usage outcomes
+- [ ] Reputation visible on skill detail pages and contributor profiles
+
+### Deliverable
+
+- OAuth login (GitHub, Google) with JWT tokens
+- Role-based access control across UI and API
+- Author attribution and reputation system
+- Cost visibility and budget-aware resolution
+- Privacy-aware metadata controls
+
+---
+
+## M7: Corporate / Org
+
+**Thesis proved:** Organisations can run private Loom instances that compose with the public registry. The three-tier resolution chain (local → corporate → community) is operational. Tenant isolation is complete.
 
 **What you can demo:** An organisation's agent resolves `corp://acme-vendor-assessment`. The corporate Loom instance serves the org-specific skill. That skill `extends` `loom://vendor-risk-briefing@verified` from the public registry. The agent gets the merged result: community knowledge + corporate context. The org admin sees usage analytics in their dashboard. None of their corporate skills are visible to the public registry.
 
 ### Multi-Tenancy
 
 - [ ] Org model: org accounts, org-level API keys, member management
-- [ ] Tenant isolation: each org's skills are fully isolated in the database
+- [ ] Tenant isolation: each org's skills fully isolated in the database
 - [ ] Org-level configuration: trust floor, approved categories, custom eval criteria, logging/audit policy
 - [ ] Org admin dashboard: usage analytics, skill inventory, member access
 
@@ -545,7 +678,7 @@ M4i (Behavioral Eval) ──→ M4ii (Comparative Eval + Amendment Triage)
 - [ ] `corp://` URI scheme: corporate MCP server resolves `corp://` locally, `loom://` from public registry
 - [ ] Public registry resolution from corporate instance: sends only slug + version, not corporate context
 - [ ] Air-gapped mode: disable public registry connectivity (all `loom://` references return "unavailable")
-- [ ] `extends` chain resolution across tiers: recursive resolution through corp -> loom
+- [ ] `extends` chain resolution across tiers: recursive resolution through corp → loom
 
 ### Corporate Eval
 
@@ -571,10 +704,8 @@ M4i (Behavioral Eval) ──→ M4ii (Comparative Eval + Amendment Triage)
 ### Privacy & Observability
 
 - [ ] Tiered observability: corporate instances control their own audit/logging policy
-- [ ] Corporate audit trails: full resolution logging (which skills, which teams, outcomes) when org policy requires it
-- [ ] Public registry privacy defaults: anonymous usage signals only, no query text logging, no activity profiling
-- [ ] Privacy-aware resolution: `privacy_floor` context parameter filters skills by `privacy_impact` metadata
-- [ ] `privacy_impact` filtering in `resolve` and `search` constraint-aware ranking
+- [ ] Corporate audit trails: full resolution logging (which skills, which teams, outcomes)
+- [ ] Public registry privacy defaults: anonymous usage signals only, no query text logging
 
 ### Deliverable
 
@@ -586,36 +717,76 @@ M4i (Behavioral Eval) ──→ M4ii (Comparative Eval + Amendment Triage)
 
 ---
 
+## M8: Federation
+
+**Thesis proved:** Loom evolves from a resolution layer to an execution authority. Agents describe a task, Loom routes the request to the right downstream agent or MCP service, orchestrates execution, and returns results.
+
+**What you can demo:** An agent asks Loom to "review this PR for security." Loom resolves the best capability, authenticates with the downstream code review MCP service using delegated credentials, executes the multi-step review plan, and returns the synthesised result — the agent never directly connects to the review service. The entire execution is audited with full provenance.
+
+### Execution Authority
+
+- [ ] Capability execution: Loom invokes downstream MCP services to execute resolved capability steps
+- [ ] Result aggregation: multi-step capability results synthesised and returned to the requesting agent
+- [ ] Execution status tracking: real-time progress for multi-step capability execution
+
+### Credential Delegation
+
+- [ ] Trust chain: requesting agent → Loom → downstream service, each link independently verifiable
+- [ ] Scope boundaries: per-resolution scope delegation (request for "review PR" doesn't grant "deploy")
+- [ ] Credential brokering: Loom holds service credentials, issues scoped tokens to downstream services
+- [ ] Token exchange: OAuth2 token exchange (RFC 8693) for cross-service delegation
+
+### Cross-Org Federation
+
+- [ ] Corporate instances sharing skills between partner orgs (bilateral trust)
+- [ ] Federated resolution: query routes through multiple Loom instances
+- [ ] Cross-org audit trails: provenance tracking across organisational boundaries
+
+### Billing & Metering
+
+- [ ] Per-execution cost attribution: downstream service costs attributed to requesting org/user
+- [ ] Cost routing: economic metadata (cost_profile) used for real billing, not just advisory
+- [ ] Budget enforcement: requests exceeding cost_budget rejected before execution
+
+### Deliverable
+
+- Federated execution of multi-step capabilities via downstream MCP services
+- Credential delegation with scoped trust chains
+- Cross-org skill sharing with bilateral trust
+- Per-execution cost attribution and budget enforcement
+- Full provenance audit trail across federation boundaries
+
+---
+
 ## Milestone Dependencies
 
 ```
-M1 (Resolution + MCP) ──→ M2 (Quality + Trust) ──→ M3 (Composition)
-                                    │                      │
-                                    └──────────┬───────────┘
-                                               ↓
-                                    M4 (Living Registry — Backend)
-                                               │
-                                               ↓
-                                    M5 (Web UI + Community)
-                                               │
-                                               ↓
-                                    M6 (Corporate Loom)
+M1 (Resolution) ──→ M2 (Quality) ──→ M3 (Composition) ──→ M4 (Living Registry)
+                                                                    │
+                                                                    ↓
+                                                           M5 (Web UI)
+                                                                    │
+                                                                    ↓
+                                                     M6 (Auth + Pricing + Visibility)
+                                                                    │
+                                                                    ↓
+                                                          M7 (Corporate / Org)
+                                                                    │
+                                                                    ↓
+                                                           M8 (Federation)
 ```
 
-M1 -> M2 -> M3 is the critical path. M4 can start in parallel with M3 (usage reporting and behavioral eval don't depend on capabilities, though breaking change detection for capabilities requires M3). M5 depends on M4 because the web UI surfaces M4's behavioral scores, usage stats, and governance workflows. M6 depends on M5 because corporate instances need the governance, abuse prevention, and community infrastructure.
+M1 → M2 → M3 → M4 is the backend critical path. M5 depends on M4 (surfaces behavioral scores, usage stats, governance). M6 adds identity and pricing to the UI. M7 layers org isolation on top of M6's auth. M8 extends M7's multi-tenancy into cross-org execution delegation.
 
 ---
 
 ## What's NOT in These Milestones
 
-These are explicitly deferred beyond M6:
+These are explicitly deferred beyond M8:
 
-- **Credential brokering / token exchange** — Loom declares dependencies; runtimes handle auth
-- **Runtime scope enforcement** — agent runtimes' responsibility
-- **Cross-service delegation chains** — requires MCP ecosystem maturity
-- **Reputation scoring** — needs enough contributor activity to be meaningful
-- **Fork-and-prove** — competing skill versions visible to consumers
-- **Cross-org federation** — corporate instances sharing skills between partner orgs
 - **Skill format as open standard** — publish the spec independently of the implementation
-- **Additional client-side `extends` libraries beyond the reference Python implementation** — e.g. TypeScript and framework-specific helpers
-- **Public registry privacy tiers** — opt-in analytics for contributors who want richer skill performance data
+- **Additional client-side `extends` libraries** — TypeScript and framework-specific helpers beyond the Python reference
+- **Public registry privacy tiers** — opt-in analytics for contributors who want richer performance data
+- **Autonomous skill generation** — LLM-generated skills submitted to the eval pipeline automatically
+- **Runtime scope enforcement** — agent runtimes' responsibility, not Loom's
+- **Reputation decay** — time-weighted reputation scoring (needs sufficient contributor history)

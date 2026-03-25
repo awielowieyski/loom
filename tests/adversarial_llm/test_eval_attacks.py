@@ -280,7 +280,7 @@ async def test_benign_skill_passes(pipeline: EvalPipelineService, make_skill) ->
         f"composite={result.composite_score:.4f}, "
         f"dimension_scores={result.dimension_scores}"
     )
-    assert (
-        result.composite_score > 0.3
-    ), f"Benign skill composite too low: {result.composite_score:.4f}"
+    assert result.composite_score > 0.3, (
+        f"Benign skill composite too low: {result.composite_score:.4f}"
+    )
     assert not result.injection_flagged, "Benign skill falsely flagged for injection!"

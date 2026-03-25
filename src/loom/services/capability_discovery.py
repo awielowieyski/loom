@@ -24,6 +24,27 @@ if TYPE_CHECKING:
     from loom.models.capability import CapabilityStep, CapabilitySummary
 
 
+def _build_capability_tradeoff(
+    alt: "CapabilitySummary",
+    alt_score: float,
+    winner: "CapabilitySummary",
+    winner_score: float,
+) -> str:
+    """Build a tradeoff string comparing a capability alternative against the winner."""
+    reasons: list[str] = []
+
+    if alt_score != winner_score:
+        reasons.append(f"Lower relevance (score: {alt_score:.2f} vs {winner_score:.2f})")
+
+    if alt.trust_tier != winner.trust_tier:
+        reasons.append(f"Trust tier: {alt.trust_tier.value} (winner: {winner.trust_tier.value})")
+
+    if alt.cost_profile.rank > winner.cost_profile.rank:
+        reasons.append(f"Higher cost ({alt.cost_profile.value} vs {winner.cost_profile.value})")
+
+    return "; ".join(reasons) if reasons else "Lower match score"
+
+
 def _score(cap: "CapabilitySummary", context: ResolutionContext | None) -> float:
     """Compute a ranking score (higher is better)."""
     score = 1.0
@@ -169,7 +190,7 @@ class CapabilityDiscoveryService:
             key=lambda pair: pair[1],
             reverse=True,
         )
-        best_summary, _best_score = scored[0]
+        best_summary, best_score = scored[0]
         rest = scored[1:4]
 
         alternatives = [
@@ -187,7 +208,7 @@ class CapabilityDiscoveryService:
                     estimated_duration=c.estimated_duration,
                 ),
                 match_score=s,
-                tradeoff="Alternative capability",
+                tradeoff=_build_capability_tradeoff(c, s, best_summary, best_score),
             )
             for c, s in rest
         ]

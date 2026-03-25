@@ -12,11 +12,14 @@ from loom.db.repositories.category_repo import CategoryRepo
 from loom.db.repositories.eval_repo import EvalRepo
 from loom.db.repositories.skill_repo import SkillRepo
 from loom.db.repositories.usage_repo import UsageRepo
+from loom.services.activity_feed import ActivityFeedService
 from loom.services.capability_discovery import CapabilityDiscoveryService
 from loom.services.capability_registry import CapabilityRegistryService
 from loom.services.container import ServiceContainer
 from loom.services.discovery import DiscoveryService
+from loom.services.governance_service import GovernanceService
 from loom.services.registry import RegistryService
+from loom.services.stats_service import StatsService
 from loom.services.unified_resolver import UnifiedResolver
 
 
@@ -112,3 +115,24 @@ def get_behavioral_eval_repo(
     container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> BehavioralEvalRepo:
     return container.behavioral_eval_repo_factory(conn)
+
+
+def get_activity_feed_service(
+    conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
+) -> ActivityFeedService:
+    return container.activity_feed_factory(conn)
+
+
+def get_stats_service(
+    conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
+) -> StatsService:
+    return container.stats_service_factory(conn)
+
+
+def get_governance_service(
+    conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
+) -> GovernanceService:
+    return container.governance_service_factory(conn)

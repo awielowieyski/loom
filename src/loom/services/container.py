@@ -29,6 +29,10 @@ if TYPE_CHECKING:
 
     import asyncpg
 
+    from loom.services.activity_feed import ActivityFeedService
+    from loom.services.governance_service import GovernanceService
+    from loom.services.stats_service import StatsService
+
 
 @dataclass(frozen=True, slots=True)
 class ServiceContainer:
@@ -60,6 +64,11 @@ class ServiceContainer:
     usage_repo_factory: Callable[[asyncpg.Connection], UsageRepo]
     behavioral_eval_repo_factory: Callable[[asyncpg.Connection], BehavioralEvalRepo]
     usage_service_factory: Callable[[UsageRepo, SkillRepo], UsageService]
+
+    # M5: web UI support
+    activity_feed_factory: Callable[[asyncpg.Connection], ActivityFeedService]
+    stats_service_factory: Callable[[asyncpg.Connection], StatsService]
+    governance_service_factory: Callable[[asyncpg.Connection], GovernanceService]
 
 
 async def create_container(settings: object) -> ServiceContainer:
@@ -140,6 +149,21 @@ async def create_container(settings: object) -> ServiceContainer:
             capability_discovery_service=_capability_discovery(cap_repo, skill_repo),
         )
 
+    def _activity_feed(conn: asyncpg.Connection) -> ActivityFeedService:
+        from loom.services.activity_feed import ActivityFeedService as AFS
+
+        return AFS(conn)
+
+    def _stats_service(conn: asyncpg.Connection) -> StatsService:
+        from loom.services.stats_service import StatsService as SS
+
+        return SS(conn)
+
+    def _governance_service(conn: asyncpg.Connection) -> GovernanceService:
+        from loom.services.governance_service import GovernanceService as GS
+
+        return GS(conn)
+
     return ServiceContainer(
         pool=pool,
         settings=settings,
@@ -159,6 +183,9 @@ async def create_container(settings: object) -> ServiceContainer:
         usage_repo_factory=_usage_repo,
         behavioral_eval_repo_factory=_behavioral_eval_repo,
         usage_service_factory=_usage_service,
+        activity_feed_factory=_activity_feed,
+        stats_service_factory=_stats_service,
+        governance_service_factory=_governance_service,
     )
 
 
