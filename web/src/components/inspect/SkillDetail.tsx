@@ -139,7 +139,7 @@ export function SkillDetail({ slug, className }: SkillDetailProps) {
           <div className="space-y-2 text-sm">
             {deps.mcp_servers.length > 0 && (
               <div>
-                <h3 className="font-medium text-muted-foreground">MCP Servers</h3>
+                <h3 className="font-medium text-muted-foreground">Prerequisites</h3>
                 <ul className="mt-1 space-y-1">
                   {deps.mcp_servers.map((s) => (
                     <li key={s.uri} className="flex items-center gap-2">

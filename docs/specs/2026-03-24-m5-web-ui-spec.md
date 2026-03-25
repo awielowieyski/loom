@@ -908,3 +908,39 @@ M6 should design auth with federation in mind from the start, even if federation
 - Role hierarchy (viewer → contributor → steward → admin)
 - Scope-based permissions (per-skill, per-category, per-org)
 - Credential delegation primitives (for future federation)
+
+---
+
+## 13. Known Issues & Backlog
+
+### 13.1 Dependency Schema: Prerequisites vs MCP Servers
+
+**Problem**: The `dependencies.mcp_servers` field is currently overloaded. Seed data declares items like `filesystem` and `git` as MCP servers, but these are really **environment prerequisites** — the skill needs file system access or a git repo, not an actual MCP server endpoint.
+
+**Impact**: The UI displays "MCP Servers: filesystem, git" which is misleading. The schema conflates three distinct concepts:
+1. **MCP Servers** — actual MCP server endpoints the skill calls (e.g. `github-mcp`, `slack-mcp`)
+2. **Environment prerequisites** — capabilities of the host environment (file system access, git, network)
+3. **CLI tools** — specific executables the skill invokes (e.g. `ruff`, `pytest`, `docker`)
+
+**Proposed fix (schema)**:
+- Rename/restructure `DependencyDeclaration` to separate these:
+  - `mcp_servers`: actual MCP server URIs
+  - `prerequisites`: environment requirements (`filesystem`, `git`, `network`, `docker`, etc.)
+  - `tools`: specific CLI tools with optional version constraints
+- Requires: model change, migration, seed data update, API response update, frontend update
+
+**Proposed fix (eval pipeline)**:
+- During static analysis, **scan skill content** for actual tool usage (shell commands, file operations, API calls, MCP tool invocations)
+- **Verify** declared dependencies match what the skill actually uses
+- **Discover** undeclared dependencies and flag them (e.g. skill runs `git log` but didn't declare `git`)
+- **Reject or warn** on skills with undeclared dependencies that could affect trust scoring
+
+**Priority**: Medium — affects correctness of dependency display and trust assessment. Should be addressed before M6 (auth) since dependency declarations feed into trust decisions.
+
+### 13.2 Seed Data Quality
+
+The current seed skills/capabilities are minimal bootstrap data. Before wider release:
+- Review all dependency declarations for accuracy
+- Ensure skill content follows consistent markdown structure
+- Add more diverse examples across categories
+- Eventually: automated ingestion from the wider internet with quality gates
