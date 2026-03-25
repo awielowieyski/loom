@@ -15,9 +15,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = LoomSettings()
     container = await create_container(settings)
     app.state.container = container
+
+    # Create arq Redis pool for job enqueueing (eval trigger, etc.)
+    from arq import create_pool as create_arq_pool
+
+    from loom.worker import _redis_settings_from_url
+
+    arq_pool = await create_arq_pool(_redis_settings_from_url(settings.redis.url))
+    app.state.arq_pool = arq_pool
+
     try:
         yield
     finally:
+        await arq_pool.close()
         await close_container(container)
 
 

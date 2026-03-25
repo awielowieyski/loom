@@ -493,3 +493,32 @@ class SkillRepo:
             str(staleness_window_days),
         )
         return [row["id"] for row in rows]
+
+    async def get_unevaluated(self, limit: int = 50) -> list[Skill]:
+        """Return skills that have never been evaluated, ordered by creation date."""
+        rows = await self._conn.fetch(
+            f"""
+            SELECT {_SKILL_COLUMNS}
+            FROM skills
+            WHERE eval_status IS NULL OR eval_status = 'pending'
+            ORDER BY created_at ASC
+            LIMIT $1
+            """,
+            limit,
+        )
+        return [_row_to_skill(row) for row in rows]
+
+    async def get_by_source_pattern(self, pattern: str, limit: int = 50) -> list[Skill]:
+        """Return skills whose source_uri matches an ILIKE pattern."""
+        rows = await self._conn.fetch(
+            f"""
+            SELECT {_SKILL_COLUMNS}
+            FROM skills
+            WHERE source_uri ILIKE $1
+            ORDER BY created_at ASC
+            LIMIT $2
+            """,
+            f"%{pattern}%",
+            limit,
+        )
+        return [_row_to_skill(row) for row in rows]
