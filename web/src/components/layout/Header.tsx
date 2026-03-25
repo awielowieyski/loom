@@ -1,6 +1,6 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Menu, Moon, Sun, X } from 'lucide-react'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
@@ -14,7 +14,10 @@ const navLinks = [
 function useDarkMode() {
   const [dark, setDark] = useState(() => {
     if (typeof window === 'undefined') return false
-    return document.documentElement.classList.contains('dark')
+    const stored = localStorage.getItem('theme')
+    const isDark = stored === 'dark' || (!stored && document.documentElement.classList.contains('dark'))
+    document.documentElement.classList.toggle('dark', isDark)
+    return isDark
   })
 
   const toggle = useCallback(() => {
@@ -24,17 +27,6 @@ function useDarkMode() {
       localStorage.setItem('theme', next ? 'dark' : 'light')
       return next
     })
-  }, [])
-
-  useEffect(() => {
-    const stored = localStorage.getItem('theme')
-    if (stored === 'dark') {
-      document.documentElement.classList.add('dark')
-      setDark(true)
-    } else if (stored === 'light') {
-      document.documentElement.classList.remove('dark')
-      setDark(false)
-    }
   }, [])
 
   return { dark, toggle }

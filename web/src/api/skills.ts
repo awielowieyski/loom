@@ -4,7 +4,7 @@ import type {
   SkillSummary,
   UsageStats,
   BehavioralEvalResult,
-  TimelineEntry,
+
   SkillTimelineResponse,
 } from '@/types/api'
 

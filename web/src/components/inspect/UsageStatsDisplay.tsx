@@ -1,4 +1,4 @@
-import { Activity, CheckCircle, Clock, BarChart3 } from 'lucide-react'
+import { CheckCircle, Clock, BarChart3 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useSkillUsage } from '@/hooks/useSkill'
 import { cn } from '@/lib/utils'
