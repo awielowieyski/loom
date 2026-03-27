@@ -286,9 +286,12 @@ async def ingest_approved(
             except Exception:  # noqa: BLE001
                 pass  # get_by_slug may raise if not found — that's fine
 
-            # Create skill via RegistryService
+            # Create skill via RegistryService (skip eval validation for unvetted)
+            sc.trust_tier = "unvetted"
             try:
-                skill = await registry.create_skill(sc, author_id, embedding=embedding)
+                skill = await registry.create_skill(
+                    sc, author_id, embedding=embedding, skip_validation=True
+                )
                 print(f"    [+] skill created: {skill.slug} (id={skill.id})")
             except Exception as exc:  # noqa: BLE001
                 print(f"    [error] create_skill failed: {exc}")

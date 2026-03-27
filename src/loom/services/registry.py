@@ -51,12 +51,15 @@ class RegistryService:
         data: SkillCreate,
         author_id: uuid_mod.UUID,
         embedding: list[float] | None = None,
+        *,
+        skip_validation: bool = False,
     ) -> Skill:
         """Validate, resolve category, then create skill + initial version."""
-        # Structural validation
-        result = self._eval_service.validate_structure(data)
-        if not result.passed:
-            raise ValueError(f"Validation failed: {'; '.join(result.errors)}")
+        # Structural validation (skipped for bulk ingestion of unvetted skills)
+        if not skip_validation:
+            result = self._eval_service.validate_structure(data)
+            if not result.passed:
+                raise ValueError(f"Validation failed: {'; '.join(result.errors)}")
 
         # Resolve category
         category = await self._category_repo.get_by_slug(data.category_slug)

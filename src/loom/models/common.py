@@ -5,11 +5,12 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-_TRUST_RANK: dict[str, int] = {"experimental": 0, "community": 1, "verified": 2}
+_TRUST_RANK: dict[str, int] = {"unvetted": -1, "experimental": 0, "community": 1, "verified": 2}
 _COST_RANK: dict[str, int] = {"free": 0, "low": 1, "moderate": 2, "high": 3}
 
 
 class TrustTier(StrEnum):
+    UNVETTED = "unvetted"  # Bulk-ingested, passed cheap gates only — not searchable
     EXPERIMENTAL = "experimental"
     COMMUNITY = "community"
     VERIFIED = "verified"

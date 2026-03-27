@@ -1271,3 +1271,121 @@ Each entry links to the full diff and the eval results for that version.
 4. Eval pipeline writes `eval_rewrite` versions with full provenance
 5. Ingestion re-sync creates `ingestion_sync` versions
 6. Admin edit UI creates `admin_edit` versions
+
+---
+
+## 17. Two-Pass Ingestion Pipeline
+
+### 17.1 Overview
+
+Ingestion is split into two distinct passes to separate cheap bulk import from expensive LLM-powered vetting:
+
+```
+                    PASS 1: Ingest + Gate                    PASS 2: Vet + Enrich
+                    (bulk, no LLM, fast)                     (batch, LLM-powered)
+
+Scrape → Transform → Cheap Gates → Persist as 'unvetted'    Pick unvetted → LLM Meta Rewrite
+                      ├── Content hash dedup                                 ├── Name / description
+                      ├── Slug collision                                     ├── Embedding text
+                      ├── Min content length                                 ├── Eval scenarios
+                      ├── Injection pattern scan                             ├── Category / tags
+                      └── Basic structure check                              └── Disambiguation note
+                                                             → Full Eval Pipeline
+                                                               ├── Clarity
+                                                               ├── Completeness
+                                                               ├── Safety
+                                                               ├── Correctness
+                                                             → Semantic Dedup (embedding similarity)
+                                                             → Pass? → Promote to 'candidate'
+                                                             → Fail? → Mark as 'rejected'
+```
+
+### 17.2 Trust Tier Progression
+
+Add `unvetted` as the new entry point before the existing tiers:
+
+```
+unvetted → submitted → candidate → promoted
+                ↘          ↘          ↘
+              rejected   rejected   deprecated
+```
+
+| Tier | Meaning | Visible in search/resolve? | How you get here |
+|------|---------|---------------------------|------------------|
+| `unvetted` | Ingested, passed cheap gates only | No | Pass 1 bulk import |
+| `submitted` | Passed LLM meta rewrite, has real eval scenarios | No | Pass 2 meta rewrite complete |
+| `candidate` | Passed full eval pipeline | Yes | Pass 2 eval pass |
+| `promoted` | High usage + consistently good eval scores | Yes (prioritised) | Automated promotion |
+| `rejected` | Failed gates or eval | No (visible in governance) | Any stage failure |
+| `deprecated` | Superseded by another skill | Yes (with warning) | Manual or auto |
+
+Key rule: **the resolver and search endpoints only return `candidate` or `promoted` skills.** Unvetted and submitted skills exist in the DB for governance/admin but are invisible to consumers.
+
+### 17.3 Pass 1: Cheap Gates (no LLM)
+
+These run during `ingest.py --approve` and filter out obvious junk:
+
+| Gate | Check | Reject threshold |
+|------|-------|-----------------|
+| **Content hash dedup** | SHA-256 of normalized content | Exact match → skip |
+| **Slug collision** | Existing skill with same slug | Same source → skip, different source → suffix |
+| **Min content length** | `len(content.strip())` | < 100 chars → reject |
+| **Max content length** | `len(content)` | > 50,000 chars → reject |
+| **Injection patterns** | 11 regex patterns from static_analyser | Any match → reject |
+| **Structure check** | Has at least one heading or paragraph | No structure → reject |
+
+Skills that pass all gates are persisted with `trust_tier = 'unvetted'`, no embedding, no eval.
+
+### 17.4 Pass 2: LLM Meta Rewrite + Eval
+
+Runs as a batch job (`scripts/vet.py` or worker task), processing unvetted skills:
+
+**Step 1: Meta Rewrite (new)**
+- Input: full skill content + nearest 5 existing vetted skills' descriptions
+- LLM generates:
+  - `display_name`: clean, descriptive name
+  - `description`: what the skill does, when to use it, what it does NOT do
+  - `embedding_text`: optimized for discriminative vector search
+  - `eval_scenarios`: 3-5 meaningful test scenarios derived from content
+  - `category_slug`: proper categorization
+  - `tags`: relevant tags
+  - `disambiguation_note`: how this differs from similar existing skills
+- Output stored as a new version with `change_type = 'eval_rewrite'`
+
+**Step 2: Semantic Dedup**
+- Generate embedding from the rewritten `embedding_text`
+- Compare against all existing vetted skills
+- \> 0.95 similarity → reject as duplicate, link to existing
+- 0.85 – 0.95 → flag for human review in governance dashboard
+- < 0.85 → proceed
+
+**Step 3: Full Eval Pipeline (existing)**
+- Run the existing 5-phase eval using the generated eval scenarios
+- Score clarity, completeness, safety, correctness
+- Apply pass/fail thresholds
+
+**Step 4: Promotion**
+- Pass → update `trust_tier` to `candidate`, persist embedding, now searchable
+- Fail → update `trust_tier` to `rejected`, store reason
+
+### 17.5 Batch Processing Strategy
+
+- Process unvetted skills oldest-first (FIFO)
+- Configurable batch size (default: 50 per run)
+- Rate limit LLM calls (respect provider limits)
+- Resumable: tracks progress via `trust_tier` state
+- Can run as: manual CLI (`scripts/vet.py --batch 50`), arq worker job, or cron
+
+### 17.6 Implementation Priority
+
+**Now (M5):**
+1. Remove auto-generated eval_spec from transformer (revert placeholder)
+2. Skip eval validation for ingestion (allow empty eval_spec for `unvetted` tier)
+3. Persist ingested skills as `unvetted` — no embedding, no eval
+4. Update resolver/search to filter out `unvetted` and `submitted`
+
+**Next (M6):**
+5. Build `scripts/vet.py` with LLM meta rewrite
+6. Implement semantic dedup in vetting pass
+7. Wire into eval pipeline for full scoring
+8. Governance dashboard shows vetting queue + rejection reasons

@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from loom.models.common import EvalScenario, EvalSpec
 from loom.models.skill import SkillCreate
 
 if TYPE_CHECKING:
@@ -142,17 +141,6 @@ def transform_to_skill_create(item: RawIngestionItem) -> SkillCreate:
 
     category = infer_category_from_path(item.file_path, "ai-instructions")
 
-    # Auto-generate a minimal eval spec for ingested skills
-    eval_spec = EvalSpec(
-        scenarios=[
-            EvalScenario(
-                description=f"Basic invocation of {name[:100]}",
-                input_context=description[:200] or "User requests this skill",
-                success_criteria="Skill executes without errors and produces relevant output",
-            )
-        ]
-    )
-
     return SkillCreate(
         slug=slug_base,
         name=name[:200],
@@ -163,5 +151,4 @@ def transform_to_skill_create(item: RawIngestionItem) -> SkillCreate:
         tags=tags[:10],
         source_uri=item.source_uri,
         license=item.detected_license,
-        eval_spec=eval_spec,
     )

@@ -103,9 +103,14 @@ class DiscoveryService:
         accepted: list[SkillSummary] = []
         rejected: list[RejectedCandidate] = []
 
-        trust_floor = context.trust_floor if context else None
+        # Default floor: exclude unvetted skills unless explicitly requested
+        trust_floor = (
+            context.trust_floor
+            if context and context.trust_floor is not None
+            else TrustTier.EXPERIMENTAL
+        )
         for skill in candidates:
-            if trust_floor is not None and not skill.trust_tier.meets_floor(trust_floor):
+            if not skill.trust_tier.meets_floor(trust_floor):
                 rejected.append(
                     RejectedCandidate(
                         skill=skill,
