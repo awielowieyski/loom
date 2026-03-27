@@ -52,8 +52,7 @@ from loom.services.eval import EvalService  # noqa: E402
 from loom.services.registry import RegistryService  # noqa: E402
 from loom.services.static_analyser import (  # noqa: E402
     MAX_CONTENT_LENGTH,
-    MIN_CONTENT_LENGTH,
-    _scan_injections,
+    scan_injections,
 )
 from loom.settings import LoomSettings  # noqa: E402
 
@@ -65,6 +64,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SEED_USER_HANDLE = "loom-seed"
+INGEST_MIN_CONTENT_LENGTH = 100
 
 
 # ---------------------------------------------------------------------------
@@ -136,9 +136,9 @@ async def gather_candidates(
 
         # --- Cheap gates (Stage 1) ---
         content_len = len(skill_create.content.strip())
-        if content_len < MIN_CONTENT_LENGTH:
+        if content_len < INGEST_MIN_CONTENT_LENGTH:
             c = Candidate(item, skill_create, content_hash)
-            c.skip_reason = f"too short ({content_len} chars, min {MIN_CONTENT_LENGTH})"
+            c.skip_reason = f"too short ({content_len} chars, min {INGEST_MIN_CONTENT_LENGTH})"
             candidates.append(c)
             continue
         if content_len > MAX_CONTENT_LENGTH:
@@ -146,10 +146,10 @@ async def gather_candidates(
             c.skip_reason = f"too long ({content_len} chars, max {MAX_CONTENT_LENGTH})"
             candidates.append(c)
             continue
-        injection_hits = _scan_injections(skill_create.content)
+        injection_hits = scan_injections(skill_create.content)
         if injection_hits:
             c = Candidate(item, skill_create, content_hash)
-            patterns = ", ".join(h.pattern_name for h in injection_hits)
+            patterns = ", ".join(h.pattern for h in injection_hits)
             c.skip_reason = f"injection patterns detected: {patterns}"
             candidates.append(c)
             continue

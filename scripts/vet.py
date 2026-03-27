@@ -18,6 +18,7 @@ import logging
 import sys
 import textwrap
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 # ---------------------------------------------------------------------------
 # Resolve project root
@@ -27,16 +28,33 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import asyncpg  # noqa: E402
+from pgvector.asyncpg import register_vector  # noqa: E402
 from pydantic_ai import Agent  # noqa: E402
 from seed import get_embedding  # noqa: E402
 
+from loom.db.repositories.eval_repo import EvalRepo  # noqa: E402
 from loom.db.repositories.skill_repo import SkillRepo  # noqa: E402
 from loom.models.common import EvalScenario, EvalSpec, TrustTier  # noqa: E402
 from loom.providers.llm import create_llm_model  # noqa: E402
 from loom.services.eval_runner import run_evaluation  # noqa: E402
 from loom.settings import LoomSettings  # noqa: E402
 
+if TYPE_CHECKING:
+    import uuid as uuid_mod
+
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# DB connection setup (matches ingest.py / seed.py pattern)
+# ---------------------------------------------------------------------------
+
+
+async def _init_conn(conn: asyncpg.Connection) -> None:  # type: ignore[type-arg]
+    """Set up JSONB codec and pgvector for each pool connection."""
+    await conn.set_type_codec("jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog")
+    await register_vector(conn)
+
 
 # ---------------------------------------------------------------------------
 # Meta rewrite prompt
@@ -133,7 +151,7 @@ async def find_similar_skills(
 
 async def vet_skill(
     pool: asyncpg.pool.Pool,
-    skill_id: str,
+    skill_id: uuid_mod.UUID,
     skill_slug: str,
     skill_content: str,
     skill_embedding: list[float] | None,
@@ -207,6 +225,7 @@ async def vet_skill(
 
     async with pool.acquire() as conn:
         skill_repo = SkillRepo(conn)
+        eval_repo = EvalRepo(conn)
         await skill_repo.update_metadata(
             skill_id,
             name=new_name,
@@ -217,6 +236,12 @@ async def vet_skill(
         )
         # Promote from unvetted → experimental (now has metadata + eval spec)
         await skill_repo.update_trust_tier(skill_id, TrustTier.EXPERIMENTAL)
+        await eval_repo.create_trust_audit_entry(
+            skill_id=skill_id,
+            previous_tier="unvetted",
+            new_tier="experimental",
+            reason="Vet pipeline: meta rewrite complete",
+        )
 
     # Step 5: Run full eval pipeline
     print(f"  [{skill_slug}] Running evaluation pipeline...")
@@ -230,9 +255,27 @@ async def vet_skill(
         if passed:
             async with pool.acquire() as conn:
                 skill_repo = SkillRepo(conn)
+                eval_repo = EvalRepo(conn)
                 await skill_repo.update_trust_tier(skill_id, TrustTier.COMMUNITY)
+                await eval_repo.create_trust_audit_entry(
+                    skill_id=skill_id,
+                    previous_tier="experimental",
+                    new_tier="community",
+                    reason="Vet pipeline: eval passed",
+                )
             result["status"] = "promoted"
         else:
+            # Failed eval — demote back to unvetted so it's not searchable
+            async with pool.acquire() as conn:
+                skill_repo = SkillRepo(conn)
+                eval_repo = EvalRepo(conn)
+                await skill_repo.update_trust_tier(skill_id, TrustTier.UNVETTED)
+                await eval_repo.create_trust_audit_entry(
+                    skill_id=skill_id,
+                    previous_tier="experimental",
+                    new_tier="unvetted",
+                    reason="Vet pipeline: eval score too low",
+                )
             result["status"] = "evaluated_low_score"
 
         result["details"] = {
@@ -245,6 +288,21 @@ async def vet_skill(
 
     except Exception as exc:  # noqa: BLE001
         import traceback
+
+        # Eval failed — demote back to unvetted so it's not searchable
+        try:
+            async with pool.acquire() as conn:
+                skill_repo = SkillRepo(conn)
+                eval_repo = EvalRepo(conn)
+                await skill_repo.update_trust_tier(skill_id, TrustTier.UNVETTED)
+                await eval_repo.create_trust_audit_entry(
+                    skill_id=skill_id,
+                    previous_tier="experimental",
+                    new_tier="unvetted",
+                    reason=f"Vet pipeline: eval exception — {exc}",
+                )
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to demote skill %s after eval error", skill_id)
 
         result["status"] = "eval_failed"
         result["details"] = {"error": str(exc)}
@@ -265,7 +323,7 @@ async def main() -> None:
     settings = LoomSettings()
     # asyncpg wants plain postgresql:// not postgresql+asyncpg://
     db_url = settings.database.url.replace("+asyncpg", "")
-    pool = await asyncpg.create_pool(db_url)
+    pool = await asyncpg.create_pool(db_url, init=_init_conn)
 
     # Fetch unvetted skills
     async with pool.acquire() as conn:
@@ -294,7 +352,7 @@ async def main() -> None:
     # Process each skill
     results = []
     for row in rows:
-        skill_id = str(row["id"])
+        skill_id = row["id"]
         skill_slug = row["slug"]
         skill_content = row["content"]
         # asyncpg may return embedding as string or None

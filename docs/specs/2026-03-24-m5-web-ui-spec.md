@@ -1385,7 +1385,35 @@ Runs as a batch job (`scripts/vet.py` or worker task), processing unvetted skill
 4. Update resolver/search to filter out `unvetted` and `submitted`
 
 **Next (M6):**
-5. Build `scripts/vet.py` with LLM meta rewrite
-6. Implement semantic dedup in vetting pass
-7. Wire into eval pipeline for full scoring
-8. Governance dashboard shows vetting queue + rejection reasons
+5. Implement semantic dedup in vetting pass (compare new embedding against existing)
+6. Governance dashboard shows vetting queue + rejection reasons
+7. Eval-driven meta feedback loop (§17.7)
+
+### 17.7 Eval-Driven Meta Feedback Loop (M6)
+
+The eval pipeline already reads skill content deeply to score clarity and completeness.
+It should return structured feedback that can refine the meta rewrite:
+
+**Feedback the eval can provide:**
+- **Description accuracy**: "Description says 'manages projects' but skill only covers issue tracking"
+- **Scope mismatch**: "Claims to handle OAuth but content only covers password auth"
+- **Tag suggestions**: "Content analysis suggests adding 'testing' tag"
+- **Safety-driven amendments**: "Description should note this skill executes shell commands"
+- **Disambiguation refinements**: "After eval, this skill is nearly identical to X — recommend merge"
+
+**Proposed flow:**
+```
+Rewrite → Eval → Meta feedback → (optional) Re-rewrite → Re-eval
+```
+
+**Schema addition** (on `eval_jobs` table):
+- `meta_feedback`: JSONB — structured feedback from eval about metadata quality
+  - `description_issues`: list of accuracy/scope problems
+  - `suggested_tags`: additional tags from content analysis
+  - `safety_notices`: required disclosures (network access, shell execution, etc.)
+  - `disambiguation_notes`: similarity concerns with existing skills
+  - `confidence`: how confident the eval is in its feedback
+
+The vetting pipeline decides whether to apply feedback and re-run based on
+confidence thresholds. High-confidence feedback is auto-applied; low-confidence
+feedback is queued for human review in the governance dashboard.

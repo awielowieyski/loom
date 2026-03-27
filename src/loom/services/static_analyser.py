@@ -79,7 +79,7 @@ def _max_nesting_depth(content: str) -> int:
     return max(len(m) for m in matches)
 
 
-def _scan_injections(content: str) -> list[InjectionIndicator]:
+def scan_injections(content: str) -> list[InjectionIndicator]:
     """Scan content for injection patterns, returning indicators."""
     indicators: list[InjectionIndicator] = []
     lines = content.split("\n")
@@ -195,7 +195,7 @@ class StaticAnalyser:
                 )
 
             # Injection scanning — indicators populated, NOT causing rejection.
-            injection_indicators = _scan_injections(normalised)
+            injection_indicators = scan_injections(normalised)
 
         # --- Complexity score ---
         score = _complexity_score(normalised, dep_count, step_count)
