@@ -1,5 +1,6 @@
 """Skill repository with raw asyncpg SQL."""
 
+import json
 import uuid as uuid_mod
 from datetime import datetime
 from typing import Any
@@ -42,7 +43,17 @@ def _row_to_skill(row: asyncpg.Record) -> Skill:
     # With register_vector, embedding comes back as numpy array
     embedding = d.get("embedding")
     if embedding is not None:
-        d["embedding"] = list(embedding)
+        if hasattr(embedding, "tolist"):
+            d["embedding"] = embedding.tolist()
+        elif isinstance(embedding, str):
+            d["embedding"] = json.loads(embedding)
+        else:
+            d["embedding"] = list(embedding)
+    # asyncpg returns JSONB as strings — parse them for Pydantic
+    for key in ("dependencies", "eval_spec", "cost_drivers"):
+        val = d.get(key)
+        if isinstance(val, str):
+            d[key] = json.loads(val)
     return Skill(**d)
 
 
@@ -443,6 +454,53 @@ class SkillRepo:
         if last_eval_at is not None:
             params.append(last_eval_at)
             set_parts.append(f"last_eval_at = ${len(params)}")
+
+        params.append(skill_id)
+        await self._conn.execute(
+            f"UPDATE skills SET {', '.join(set_parts)} WHERE id = ${len(params)}",  # noqa: S608
+            *params,
+        )
+
+    async def update_trust_tier(self, skill_id: uuid_mod.UUID, trust_tier: TrustTier) -> None:
+        """Promote or demote a skill's trust tier."""
+        await self._conn.execute(
+            "UPDATE skills SET trust_tier = $1, updated_at = now() WHERE id = $2",
+            trust_tier.value,
+            skill_id,
+        )
+
+    async def update_metadata(
+        self,
+        skill_id: uuid_mod.UUID,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        tags: list[str] | None = None,
+        embedding: list[float] | None = None,
+        eval_spec: EvalSpec | None = None,
+    ) -> None:
+        """Update searchable metadata fields (used by vetting pipeline)."""
+        set_parts: list[str] = ["updated_at = now()"]
+        params: list[Any] = []
+
+        if name is not None:
+            params.append(name)
+            set_parts.append(f"name = ${len(params)}")
+        if description is not None:
+            params.append(description)
+            set_parts.append(f"description = ${len(params)}")
+        if tags is not None:
+            params.append(tags)
+            set_parts.append(f"tags = ${len(params)}")
+        if embedding is not None:
+            params.append(str(embedding))
+            set_parts.append(f"embedding = ${len(params)}::vector")
+        if eval_spec is not None:
+            params.append(json.dumps(eval_spec.model_dump(mode="json")))
+            set_parts.append(f"eval_spec = ${len(params)}::jsonb")
+
+        if len(params) == 0:
+            return  # nothing to update
 
         params.append(skill_id)
         await self._conn.execute(

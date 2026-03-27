@@ -1,5 +1,6 @@
 """Eval repository with raw asyncpg SQL."""
 
+import json
 import uuid as uuid_mod
 from typing import Any
 
@@ -26,11 +27,21 @@ _TRUST_AUDIT_COLUMNS = (
 
 
 def _row_to_eval_job(row: asyncpg.Record) -> EvalJob:
-    return EvalJob(**dict(row))
+    d = dict(row)
+    # asyncpg returns jsonb as strings
+    for key in ("structural_report", "dimension_scores", "dimension_confidence"):
+        if isinstance(d.get(key), str):
+            d[key] = json.loads(d[key])
+    return EvalJob(**d)
 
 
 def _row_to_dimension_run(row: asyncpg.Record) -> EvalDimensionRun:
-    return EvalDimensionRun(**dict(row))
+    d = dict(row)
+    # asyncpg returns jsonb as strings
+    for key in ("evidence",):
+        if isinstance(d.get(key), str):
+            d[key] = json.loads(d[key])
+    return EvalDimensionRun(**d)
 
 
 def _row_to_trust_audit_entry(row: asyncpg.Record) -> TrustAuditEntry:
@@ -99,17 +110,22 @@ class EvalRepo:
         set_parts: list[str] = []
         params: list[Any] = [job_id]
 
-        def _add(field: str, value: object) -> None:
+        def _add(field: str, value: object, *, cast: str = "") -> None:
             if value is not None:
                 params.append(value)
-                set_parts.append(f"{field} = ${len(params)}")
+                set_parts.append(f"{field} = ${len(params)}{cast}")
+
+        def _add_json(field: str, value: dict[str, Any] | None) -> None:
+            if value is not None:
+                params.append(json.dumps(value))
+                set_parts.append(f"{field} = ${len(params)}::jsonb")
 
         _add("status", status)
         _add("content_hash", content_hash)
-        _add("structural_report", structural_report)
+        _add_json("structural_report", structural_report)
         _add("composite_score", composite_score)
-        _add("dimension_scores", dimension_scores)
-        _add("dimension_confidence", dimension_confidence)
+        _add_json("dimension_scores", dimension_scores)
+        _add_json("dimension_confidence", dimension_confidence)
         _add("injection_flagged", injection_flagged)
         _add("sandbox_passed", sandbox_passed)
         _add("overall_confidence", overall_confidence)
@@ -198,14 +214,14 @@ class EvalRepo:
                 eval_job_id, dimension, run_index, score, evidence,
                 injection_detected, injection_detail, confidence,
                 prompt_variant, model_id, latency_ms
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            ) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11)
             RETURNING {_DIMENSION_RUN_COLUMNS}
             """,
             eval_job_id,
             dimension,
             run_index,
             score,
-            evidence,
+            json.dumps(evidence),
             injection_detected,
             injection_detail,
             confidence,

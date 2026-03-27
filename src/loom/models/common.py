@@ -116,6 +116,7 @@ class TriggerType(StrEnum):
     AMENDMENT = "amendment"
     SCHEDULED = "scheduled"
     USAGE_SIGNAL = "usage_signal"
+    VET_PIPELINE = "vet_pipeline"
 
 
 class EvalDimension(StrEnum):
