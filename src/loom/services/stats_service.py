@@ -164,7 +164,7 @@ class StatsService:
             ORDER BY c.slug, period
             """,
             trunc,
-            periods,
+            str(periods),
         )
 
         # Build category list, period list, and data matrix
