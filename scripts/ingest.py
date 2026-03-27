@@ -17,7 +17,6 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -330,9 +329,10 @@ async def main() -> None:
             sys.exit(1)
 
     # Create scraper
-    token = os.environ.get("GITHUB_TOKEN")
+    settings = LoomSettings()
+    token = settings.github_token or None
     if not token:
-        print("[warn] GITHUB_TOKEN not set — API rate limits will be low (60 req/hr)")
+        print("[warn] GITHUB_TOKEN not set in .env — API rate limits will be low (60 req/hr)")
     scraper = GitHubScraper(token=token)
 
     try:

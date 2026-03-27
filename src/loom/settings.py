@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 
@@ -137,6 +137,9 @@ class LoomSettings(BaseSettings):
     api: APIConfig = APIConfig()
     redis: RedisConfig = RedisConfig()
     pipeline: PipelineConfig = PipelineConfig()
+
+    # Tokens that use standard env var names (no LOOM_ prefix)
+    github_token: str = Field(default="", validation_alias="GITHUB_TOKEN")
 
     @classmethod
     def settings_customise_sources(
