@@ -47,6 +47,7 @@ from loom.ingestion.transformers import (  # noqa: E402
     compute_content_hash,
     transform_to_skill_create,
 )
+from loom.models.common import TrustTier  # noqa: E402
 from loom.services.eval import EvalService  # noqa: E402
 from loom.services.registry import RegistryService  # noqa: E402
 from loom.settings import LoomSettings  # noqa: E402
@@ -287,7 +288,7 @@ async def ingest_approved(
                 pass  # get_by_slug may raise if not found — that's fine
 
             # Create skill via RegistryService (skip eval validation for unvetted)
-            sc.trust_tier = "unvetted"
+            sc.trust_tier = TrustTier.UNVETTED
             try:
                 skill = await registry.create_skill(
                     sc, author_id, embedding=embedding, skip_validation=True
