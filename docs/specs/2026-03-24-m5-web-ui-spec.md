@@ -1183,3 +1183,91 @@ Many openclaw skills include scripts, references, and test data alongside SKILL.
 7. Feedback loop: resolution → usage tracking
 8. Automated skill pair merging/splitting
 9. Periodic re-indexing as catalog grows
+
+---
+
+## 16. Audit & Provenance for Mutations
+
+### 16.1 Problem
+
+As the platform matures, skill text will be modified by multiple agents:
+- **Eval pipeline**: rewrites name/description for indexability
+- **Admin**: manual corrections, merges, content edits
+- **Auto-merge**: combining near-duplicate skills
+- **Ingestion re-sync**: upstream source changed
+
+Every mutation must be auditable. The original author's text must always be recoverable. Without this, we lose trust — a skill author can't verify what happened to their submission, and the governance dashboard can't show a meaningful change history.
+
+### 16.2 Design Principle: Immutable Version Chain
+
+The existing `skill_versions` table stores full content snapshots per version. We extend this with **mutation metadata** so each version record answers five questions:
+
+1. **What** changed? (diff summary)
+2. **Who** changed it? (agent identity)
+3. **When**? (timestamp — already have `created_at`)
+4. **Why**? (rationale)
+5. **How**? (change type — manual, automated, pipeline)
+
+### 16.3 Schema Addition: Version Provenance
+
+Add columns to `skill_versions`:
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `change_type` | text | `author_submission`, `eval_rewrite`, `admin_edit`, `auto_merge`, `ingestion_sync`, `deprecation` |
+| `change_agent` | text | Identifier: user UUID, `eval-pipeline/indexability`, `ingestion-bot`, `admin/{user_id}` |
+| `change_rationale` | text | Human-readable reason: "Rewritten for disambiguation — 3 similar skills detected" |
+| `diff_summary` | JSONB | `{"fields_changed": ["description", "name"], "old_values": {"description": "..."}}` |
+| `parent_version` | text | The version string this was derived from (null for initial submission) |
+
+### 16.4 Change Types
+
+| Type | Trigger | Agent | Example |
+|------|---------|-------|---------|
+| `author_submission` | Skill created or updated by author | User UUID | Initial publish or version bump |
+| `eval_rewrite` | Eval pipeline modifies name/description/embedding_text | `eval-pipeline/{dimension}` | Indexability rewrite for disambiguation |
+| `admin_edit` | Manual edit via governance UI | `admin/{user_id}` | Fix typo, add missing tag |
+| `auto_merge` | Two skills merged by dedup pipeline | `dedup-pipeline` | Near-duplicate merged, content combined |
+| `ingestion_sync` | Re-ingestion detects upstream changes | `ingestion-bot` | Source repo updated |
+| `deprecation` | Skill deprecated in favour of another | User or pipeline | Superseded by better version |
+
+### 16.5 Logging & Storage Strategy
+
+**What to log (structured, queryable):**
+- Version provenance (above) — stored in DB, powers governance UI timeline
+- Eval results per version — already stored in `eval_jobs`
+- Resolution events — already stored in `resolution_logs`
+
+**What to log (operational, ephemeral):**
+- API request traces — structured logging (JSON) to stdout, shipped to log aggregator
+- Embedding generation calls — duration, model, input length
+- Scraper activity — repos scanned, files fetched, rate limits hit
+
+**What NOT to store in the DB:**
+- Full API request/response bodies (too large, use log aggregator)
+- Intermediate eval pipeline state (only final results matter)
+- Raw scraped content before transformation (reconstruct from `source_uri`)
+
+### 16.6 Governance UI Integration
+
+The living feed and skill detail pages should surface mutation history:
+
+```
+v1.0.0  [author_submission]  alice@example.com  "Initial publish"
+v1.0.1  [eval_rewrite]       eval-pipeline      "Description rewritten for disambiguation"
+v1.1.0  [admin_edit]         admin/bob           "Added missing safety warning for API key handling"
+```
+
+Each entry links to the full diff and the eval results for that version.
+
+### 16.7 Priority
+
+**Must have before any text mutation feature ships (M6):**
+1. Add `change_type`, `change_agent`, `change_rationale`, `diff_summary`, `parent_version` to `skill_versions`
+2. Populate `change_type=author_submission` for all existing creation flows
+3. Governance UI shows version timeline with change metadata
+
+**Before M7:**
+4. Eval pipeline writes `eval_rewrite` versions with full provenance
+5. Ingestion re-sync creates `ingestion_sync` versions
+6. Admin edit UI creates `admin_edit` versions
