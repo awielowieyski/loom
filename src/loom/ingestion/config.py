@@ -19,15 +19,14 @@ class RepoSource:
 
 
 DEFAULT_REPOS: list[RepoSource] = [
-    # Anthropic's official skills repo — high quality, structured prompts
+    # OpenClaw skills archive — structured SKILL.md + _meta.json format
     RepoSource(
-        owner="anthropics",
-        repo="anthropic-cookbook",
-        paths=["misc/prompt_caching/", "misc/prompt_engineering/", "tool_use/"],
-        file_patterns=["*.md"],
-        source_type="cookbook",
+        owner="openclaw",
+        repo="skills",
+        paths=["skills/"],
+        file_patterns=["SKILL.md"],
+        source_type="openclaw",
         default_category="ai-instructions",
-        license_override="MIT",
     ),
 ]
 

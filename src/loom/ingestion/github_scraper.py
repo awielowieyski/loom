@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import fnmatch
+import json
 import logging
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 import httpx
@@ -37,6 +39,7 @@ class RawIngestionItem:
     repo_name: str
     commit_sha: str | None = None
     detected_license: str | None = None
+    meta_json: dict[str, object] | None = None  # sibling _meta.json if present
 
 
 class GitHubScraper:
@@ -140,6 +143,19 @@ class GitHubScraper:
                     # Skip very small files (likely not real skills)
                     if len(content.strip()) < 50:
                         return None
+
+                    # For openclaw-style repos, try to fetch sibling _meta.json
+                    meta_json: dict[str, object] | None = None
+                    if source.source_type == "openclaw":
+                        meta_path = str(PurePosixPath(entry.path).parent / "_meta.json")
+                        try:
+                            meta_raw = await self.fetch_content(
+                                source.owner, source.repo, meta_path
+                            )
+                            meta_json = json.loads(meta_raw)
+                        except (httpx.HTTPError, json.JSONDecodeError):
+                            pass  # _meta.json is optional
+
                     return RawIngestionItem(
                         source_uri=(
                             f"github:{source.owner}/{source.repo}"
@@ -152,6 +168,7 @@ class GitHubScraper:
                         repo_name=source.repo,
                         commit_sha=commit_sha,
                         detected_license=detected_license,
+                        meta_json=meta_json,
                     )
                 except httpx.HTTPError as e:
                     logger.warning("  Failed to fetch %s: %s", entry.path, e)

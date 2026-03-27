@@ -92,13 +92,24 @@ def extract_description(content: str, max_length: int = 200) -> str:
     return content[:max_length].replace("\n", " ").strip()
 
 
+def _extract_openclaw_slug(file_path: str) -> str:
+    """Extract skill slug from openclaw path like 'skills/author/skill-name/SKILL.md'."""
+    parts = PurePosixPath(file_path).parts
+    # Expected: ('skills', 'author', 'skill-name', 'SKILL.md')
+    if len(parts) >= 4:
+        return slugify(parts[2])  # the skill-name directory
+    return slugify(PurePosixPath(file_path).stem)
+
+
 def transform_to_skill_create(item: RawIngestionItem) -> SkillCreate:
     """Transform a raw ingestion item into a SkillCreate model."""
     fmt = detect_format(item.raw_content)
 
     if fmt == "yaml_frontmatter":
         frontmatter, body = parse_frontmatter(item.raw_content)
-        name = str(frontmatter.get("title", extract_title_from_markdown(body, item.file_path)))
+        name = str(frontmatter.get("name", frontmatter.get("title", "")))
+        if not name:
+            name = extract_title_from_markdown(body, item.file_path)
         description = str(frontmatter.get("description", extract_description(body)))
         raw_tags = frontmatter.get("tags", [item.source_type])
         if isinstance(raw_tags, str):
@@ -114,9 +125,19 @@ def transform_to_skill_create(item: RawIngestionItem) -> SkillCreate:
         tags = [item.source_type]
         content = item.raw_content
 
-    # Build unique slug: repo-name + file stem
-    stem = PurePosixPath(item.file_path).stem
-    slug_base = slugify(f"{item.repo_name}-{stem}")
+    # Slug: for openclaw, use the directory name; otherwise repo-stem
+    if item.source_type == "openclaw":
+        slug_base = _extract_openclaw_slug(item.file_path)
+    else:
+        stem = PurePosixPath(item.file_path).stem
+        slug_base = slugify(f"{item.repo_name}-{stem}")
+
+    # Version: prefer _meta.json, fall back to "1.0.0"
+    version = "1.0.0"
+    if item.meta_json:
+        latest = item.meta_json.get("latest", {})
+        if isinstance(latest, dict) and latest.get("version"):
+            version = str(latest["version"])
 
     category = infer_category_from_path(item.file_path, "ai-instructions")
 
@@ -126,7 +147,7 @@ def transform_to_skill_create(item: RawIngestionItem) -> SkillCreate:
         description=description[:500],
         content=content,
         category_slug=category,
-        version="1.0.0",
+        version=version,
         tags=tags[:10],
         source_uri=item.source_uri,
         license=item.detected_license,
