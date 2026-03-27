@@ -263,13 +263,26 @@ async def ingest_approved(
                 errors += 1
                 continue
 
-            # Check if skill already exists (idempotency)
+            # Check if skill already exists (idempotency + collision handling)
             try:
                 existing = await skill_repo.get_by_slug(sc.slug)
                 if existing:
-                    print(f"    [skip] {sc.slug} already exists (id={existing.id})")
-                    skipped += 1
-                    continue
+                    # Same source → skip (idempotent re-run)
+                    if existing.source_uri and existing.source_uri == sc.source_uri:
+                        print(f"    [skip] {sc.slug} already exists (same source)")
+                        skipped += 1
+                        continue
+                    # Different source → suffix to avoid collision
+                    original_slug = sc.slug
+                    suffix = c.item.source_type or "alt"
+                    sc.slug = f"{sc.slug}-{suffix}"
+                    # Check suffixed slug too
+                    existing2 = await skill_repo.get_by_slug(sc.slug)
+                    if existing2:
+                        print(f"    [skip] {original_slug} collision, {sc.slug} also exists")
+                        skipped += 1
+                        continue
+                    print(f"    [collision] {original_slug} taken, using {sc.slug}")
             except Exception:  # noqa: BLE001
                 pass  # get_by_slug may raise if not found — that's fine
 
