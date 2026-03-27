@@ -63,5 +63,7 @@ def _row_to_model(row: asyncpg.Record) -> IngestionSource:
         skill_id=row["skill_id"],
         skill_version=row["skill_version"],
         ingested_at=row["ingested_at"],
-        raw_metadata=row["raw_metadata"] if row["raw_metadata"] else {},
+        raw_metadata=json.loads(row["raw_metadata"])
+        if isinstance(row["raw_metadata"], str)
+        else (row["raw_metadata"] or {}),
     )
