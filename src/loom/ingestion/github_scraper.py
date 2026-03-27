@@ -114,7 +114,9 @@ class GitHubScraper:
             return spdx_id
         return None
 
-    async def scrape_repo(self, source: RepoSource) -> list[RawIngestionItem]:
+    async def scrape_repo(
+        self, source: RepoSource, *, limit: int | None = None
+    ) -> list[RawIngestionItem]:
         """Fetch all matching files from a repo."""
         logger.info("Scanning %s/%s ...", source.owner, source.repo)
 
@@ -124,6 +126,14 @@ class GitHubScraper:
             return []
 
         logger.info("  Found %d matching files", len(files))
+
+        # Apply limit before fetching content (avoid downloading all 7K files)
+        if limit and len(files) > limit:
+            import random
+
+            random.shuffle(files)
+            files = files[:limit]
+            logger.info("  Limited to %d files (random sample)", limit)
 
         # Get commit SHA and license
         commit_sha = await self.get_default_branch_sha(source.owner, source.repo)

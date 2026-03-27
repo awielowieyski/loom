@@ -103,17 +103,18 @@ async def gather_candidates(
 ) -> list[Candidate]:
     """Scrape repos, transform to SkillCreate, return candidates."""
     all_items: list[RawIngestionItem] = []
+    remaining = limit
     for source in sources:
-        items = await scraper.scrape_repo(source)
+        items = await scraper.scrape_repo(source, limit=remaining)
         all_items.extend(items)
+        if remaining is not None:
+            remaining = max(0, remaining - len(items))
+            if remaining == 0:
+                break
 
     # Apply path filter
     if path_prefix:
         all_items = [i for i in all_items if i.file_path.startswith(path_prefix)]
-
-    # Apply limit
-    if limit and len(all_items) > limit:
-        all_items = all_items[:limit]
 
     candidates: list[Candidate] = []
     seen_slugs: set[str] = set()
@@ -261,6 +262,16 @@ async def ingest_approved(
                 print(f"    [error] category creation failed: {exc}")
                 errors += 1
                 continue
+
+            # Check if skill already exists (idempotency)
+            try:
+                existing = await skill_repo.get_by_slug(sc.slug)
+                if existing:
+                    print(f"    [skip] {sc.slug} already exists (id={existing.id})")
+                    skipped += 1
+                    continue
+            except Exception:  # noqa: BLE001
+                pass  # get_by_slug may raise if not found — that's fine
 
             # Create skill via RegistryService
             try:
