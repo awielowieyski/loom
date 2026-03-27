@@ -22,3 +22,10 @@ class IngestionSource(BaseModel):
     skill_version: str | None = None
     ingested_at: datetime
     raw_metadata: dict[str, object] = Field(default_factory=dict)
+
+
+# Resolve forward refs so Pydantic can validate uuid/datetime at runtime
+import uuid as uuid_mod  # noqa: E402, TC003
+from datetime import datetime  # noqa: E402, F811, TC003
+
+IngestionSource.model_rebuild()
