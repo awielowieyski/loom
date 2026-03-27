@@ -334,9 +334,7 @@ async def seed() -> None:
             # Generate embedding
             embedding = None
             if has_embedder:
-                embed_text = (
-                    f"{skill_create.name}\n{skill_create.description}\n{skill_create.content}"
-                )
+                embed_text = f"{skill_create.name} — {skill_create.description}"
                 embedding = await get_embedding(embed_text, settings)
                 if embedding:
                     print(f"  [embed] {len(embedding)}-dim vector generated")

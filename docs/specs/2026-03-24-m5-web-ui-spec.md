@@ -1062,3 +1062,124 @@ When ingesting from GitHub, we need to respect and record the source license. Sh
 7. V5: Version constraints in extends/capabilities
 8. V6: Semver comparison and compatibility logic
 9. P2: Signature enforcement and verification in eval pipeline
+
+---
+
+## 15. Skill Disambiguation & Resolution Quality
+
+### 15.1 Problem
+
+When hundreds of skills share a domain (e.g., "supabase"), they cluster tightly in embedding space. A query like "implement supabase auth" matches dozens of skills at similar scores, making resolution unreliable.
+
+Root causes:
+1. **Embedding full content** dilutes the discriminative signal — two skills that differ in purpose but share 80% boilerplate text embed nearly identically
+2. **Flat retrieval** — vector search returns a ranked list with no structural pre-filtering
+3. **No ingestion-time dedup** — near-duplicates slip through (thresholds exist but aren't wired in)
+4. **Resolver doesn't surface ambiguity** — silently picks one when top candidates are indistinguishable
+
+### 15.2 Discriminative Embedding (Phase A — implement now)
+
+**Change what we embed.** Instead of embedding the full markdown content, embed:
+
+```
+{name} — {description}
+```
+
+This pushes similar-domain-but-different-purpose skills apart in embedding space. "Set up Supabase Row-Level Security policies for multi-tenant apps" embeds very differently from "Configure Supabase Edge Functions with Deno runtime".
+
+**Implementation:**
+- Change `get_embedding()` in seed/ingestion to embed `f"{name} — {description}"` instead of `content`
+- Store the embedding input text on the record for debuggability
+
+### 15.3 Eval-Time Rewrite — `indexability` dimension (Phase B)
+
+Author-provided names/descriptions are often vague, duplicative, or marketing-speak. During evaluation, an LLM agent should rewrite the embedding text for optimal retrieval:
+
+**Input to the rewrite agent:**
+1. Full skill content
+2. Author-provided name + description
+3. Nearest 5 existing skills' descriptions (distinctiveness requires context)
+
+**Output:**
+- `display_name`: human-friendly (what the UI shows)
+- `embedding_text`: optimized for vector search, includes negative framing ("does NOT cover X") to push similar skills apart
+- `disambiguation_note`: "Unlike skill X, this one specifically handles Y"
+
+**Example:**
+```
+Author says: "Supabase Auth"
+Eval rewrites: "Implement Supabase email/password authentication with
+signup confirmation flow, password reset, and session management.
+Does NOT cover OAuth, magic links, or SSO."
+```
+
+This becomes a new eval dimension (`indexability`) alongside clarity/completeness/safety/correctness. The output is both a 0-1 score and the rewritten embedding text itself.
+
+**Schema changes needed:**
+- Add `embedding_text` column to `skills` (what was actually embedded)
+- Add `display_name` column or just overwrite `name` with eval-approved version
+- Store `disambiguation_note` in eval results
+
+### 15.4 Semantic Dedup at Ingestion (Phase A — implement now)
+
+Wire the existing thresholds into the ingestion pipeline:
+
+| Similarity to existing skill | Action |
+|---|---|
+| ≥ 0.95 | Auto-reject as duplicate |
+| 0.85 – 0.95 | Flag for review — require distinctiveness justification |
+| 0.70 – 0.85 | Accept, link as `related_skills` |
+| < 0.70 | Accept freely |
+
+At ingestion time:
+1. Compute embedding of the new skill's `name + description`
+2. Find k-nearest existing skills by embedding similarity
+3. If above warn threshold, generate comparative analysis
+4. Use analysis to reject, merge, or accept with distinctiveness metadata
+
+### 15.5 Layered Resolution (Phase B)
+
+Replace flat vector search with layered retrieval:
+
+```
+Query → Category narrowing (keyword + tag match)
+      → Vector search within category (discriminative embedding)
+      → LLM re-rank (sees descriptions + tags + categories)
+      → Single best match OR alternatives if ambiguous
+```
+
+When the resolver's top candidates are within a tight similarity band (top-3 within 0.05 of each other), return alternatives with a disambiguation prompt rather than silently picking one.
+
+### 15.6 Feedback Loop (Phase C — ongoing)
+
+- Track resolution → usage conversion (resolved but never used = bad match)
+- Surface "frequently confused" skill pairs for manual review/merge
+- Use rejection data from the living feed to tune thresholds
+- Periodically re-run indexability eval when new similar skills are added
+
+### 15.7 Package Evaluation (Phase B/C)
+
+Many openclaw skills include scripts, references, and test data alongside SKILL.md. Current eval treats skills as prose. Planned additions:
+
+1. Clone skill directory from `source_uri` into temp sandbox
+2. Parse manifest files (requirements.txt, package.json) if present
+3. Install deps + run included tests
+4. Validate referenced scripts/files exist
+5. New eval dimension: `executability` (0-1 score)
+
+### 15.8 Priority
+
+**Phase A (now, during M5 ingestion):**
+1. Embed `name — description` instead of full content
+2. Wire semantic dedup into ingestion pipeline
+
+**Phase B (M6):**
+3. Indexability eval dimension with LLM rewrite
+4. Layered resolution with category pre-filtering
+5. Alternatives response when ambiguous
+6. Package validation in sandbox
+
+**Phase C (M7+):**
+7. Feedback loop: resolution → usage tracking
+8. Automated skill pair merging/splitting
+9. Periodic re-indexing as catalog grows

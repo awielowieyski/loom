@@ -241,7 +241,7 @@ async def ingest_approved(
         # Generate embedding (no DB connection held during slow API call)
         embedding = None
         if has_embedder:
-            embed_text = f"{sc.name}\n{sc.description}\n{sc.content}"
+            embed_text = f"{sc.name} — {sc.description}"
             embedding = await get_embedding(embed_text, settings)
             if embedding:
                 print(f"    [embed] {len(embedding)}-dim vector")
