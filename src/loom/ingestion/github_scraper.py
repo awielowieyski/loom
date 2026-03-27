@@ -50,8 +50,9 @@ class GitHubScraper:
             base_url="https://api.github.com",
             headers=headers,
             timeout=30.0,
+            follow_redirects=True,
         )
-        self._raw_client = httpx.AsyncClient(timeout=30.0)
+        self._raw_client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
 
     async def list_files(self, source: RepoSource) -> list[FileEntry]:
         """Get all matching files from the repo tree."""

@@ -19,6 +19,21 @@ class RepoSource:
 
 
 DEFAULT_REPOS: list[RepoSource] = [
+    # Anthropic's official skills repo — high quality, structured prompts
+    RepoSource(
+        owner="anthropics",
+        repo="anthropic-cookbook",
+        paths=["misc/prompt_caching/", "misc/prompt_engineering/", "tool_use/"],
+        file_patterns=["*.md"],
+        source_type="cookbook",
+        default_category="ai-instructions",
+        license_override="MIT",
+    ),
+]
+
+# Extended repos for bulk ingestion (use --repo flag to target specific ones)
+EXTENDED_REPOS: list[RepoSource] = [
+    *DEFAULT_REPOS,
     RepoSource(
         owner="PatrickJS",
         repo="awesome-cursorrules",

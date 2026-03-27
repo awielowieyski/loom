@@ -41,7 +41,7 @@ from seed import (  # noqa: E402
 from loom.db.repositories.category_repo import CategoryRepo  # noqa: E402
 from loom.db.repositories.ingestion_repo import IngestionRepo  # noqa: E402
 from loom.db.repositories.skill_repo import SkillRepo  # noqa: E402
-from loom.ingestion.config import DEFAULT_REPOS  # noqa: E402
+from loom.ingestion.config import DEFAULT_REPOS, EXTENDED_REPOS  # noqa: E402
 from loom.ingestion.github_scraper import GitHubScraper  # noqa: E402
 from loom.ingestion.transformers import (  # noqa: E402
     compute_content_hash,
@@ -310,6 +310,7 @@ def parse_args() -> argparse.Namespace:
     mode.add_argument("--approve", action="store_true", help="Actually ingest into the database")
 
     parser.add_argument("--repo", type=str, default=None, help="Only process a specific repo name")
+    parser.add_argument("--all", action="store_true", help="Use all repos (including extended)")
     parser.add_argument("--limit", type=int, default=None, help="Max skills to ingest")
     parser.add_argument("--path", type=str, default=None, help="Only files under this path prefix")
     return parser.parse_args()
@@ -320,12 +321,13 @@ async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     # Filter sources
-    sources = DEFAULT_REPOS
+    all_sources = EXTENDED_REPOS if args.all else DEFAULT_REPOS
+    sources = all_sources
     if args.repo:
-        sources = [s for s in sources if s.repo == args.repo]
+        sources = [s for s in all_sources if s.repo == args.repo]
         if not sources:
             print(f"No configured repo matching {args.repo!r}")
-            print(f"Available: {', '.join(s.repo for s in DEFAULT_REPOS)}")
+            print(f"Available: {', '.join(s.repo for s in all_sources)}")
             sys.exit(1)
 
     # Create scraper
