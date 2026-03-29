@@ -4,6 +4,7 @@ import type { TrustTier } from '@/types/api'
 // ---- Node sizing by trust tier ----
 
 const NODE_SIZE: Record<TrustTier, number> = {
+  unvetted: 4,
   verified: 16,
   community: 10,
   experimental: 6,

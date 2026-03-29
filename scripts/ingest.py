@@ -41,13 +41,14 @@ from seed import (  # noqa: E402
 from loom.db.repositories.category_repo import CategoryRepo  # noqa: E402
 from loom.db.repositories.ingestion_repo import IngestionRepo  # noqa: E402
 from loom.db.repositories.skill_repo import SkillRepo  # noqa: E402
+from loom.db.repositories.source_artifact_repo import SourceArtifactRepo  # noqa: E402
 from loom.ingestion.config import DEFAULT_REPOS, EXTENDED_REPOS  # noqa: E402
 from loom.ingestion.github_scraper import GitHubScraper  # noqa: E402
 from loom.ingestion.transformers import (  # noqa: E402
     compute_content_hash,
     transform_to_skill_create,
 )
-from loom.models.common import TrustTier  # noqa: E402
+from loom.models.common import LifecycleState, TrustTier  # noqa: E402
 from loom.services.eval import EvalService  # noqa: E402
 from loom.services.registry import RegistryService  # noqa: E402
 from loom.services.static_analyser import (  # noqa: E402
@@ -314,6 +315,13 @@ async def ingest_approved(
 
             # Create skill via RegistryService (skip eval validation for unvetted)
             sc.trust_tier = TrustTier.UNVETTED
+            sc.lifecycle_state = LifecycleState.QUARANTINED
+            sc.provenance_summary = {
+                "source_type": c.item.source_type,
+                "source_uri": c.item.source_uri,
+                "source_ref": c.item.commit_sha,
+                "status": "ingested",
+            }
             try:
                 skill = await registry.create_skill(
                     sc, author_id, embedding=embedding, skip_validation=True
@@ -326,6 +334,22 @@ async def ingest_approved(
 
             # Record provenance
             try:
+                source_repo = SourceArtifactRepo(conn)
+                await source_repo.create(
+                    entity_kind="skill",
+                    source_type=c.item.source_type,
+                    source_uri=c.item.source_uri,
+                    source_ref=c.item.commit_sha,
+                    artifact_hash=c.content_hash,
+                    raw_metadata={
+                        "repo_owner": c.item.repo_owner,
+                        "repo_name": c.item.repo_name,
+                        "file_path": c.item.file_path,
+                        "commit_sha": c.item.commit_sha,
+                        "detected_license": c.item.detected_license,
+                    },
+                    ingest_notes={"status": "quarantined"},
+                )
                 await ingestion_repo.create(
                     source_type=c.item.source_type,
                     source_uri=c.item.source_uri,

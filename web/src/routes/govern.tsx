@@ -7,7 +7,7 @@ import { EvalTrends } from '@/components/govern/EvalTrends'
 import { UsageHeatmap } from '@/components/govern/UsageHeatmap'
 import { ReviewQueue } from '@/components/govern/ReviewQueue'
 import { ReviewInterface } from '@/components/govern/ReviewInterface'
-import type { GovernanceQueueItem } from '@/types/api'
+import type { GovernanceQueueItem, GovernanceStage } from '@/types/api'
 
 export const Route = createFileRoute('/govern')({
   component: GovernView,
@@ -15,6 +15,7 @@ export const Route = createFileRoute('/govern')({
 
 function GovernView() {
   const [selectedItem, setSelectedItem] = useState<GovernanceQueueItem | null>(null)
+  const [selectedStage, setSelectedStage] = useState<GovernanceStage>('quarantine')
 
   const handleSelect = useCallback((item: GovernanceQueueItem) => {
     setSelectedItem(item)
@@ -29,7 +30,7 @@ function GovernView() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Govern</h1>
         <p className="text-muted-foreground">
-          Review governance queue, trust tier management, and registry health metrics.
+          Operate the registry pipeline: intake, canonicalization, deduplication, evaluation, and publication.
         </p>
       </div>
 
@@ -37,7 +38,7 @@ function GovernView() {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="trends">Trends</TabsTrigger>
-          <TabsTrigger value="review">Review Queue</TabsTrigger>
+          <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 pt-4">
@@ -49,9 +50,19 @@ function GovernView() {
           <EvalTrends />
         </TabsContent>
 
-        <TabsContent value="review" className="pt-4">
+        <TabsContent value="pipeline" className="pt-4 space-y-4">
+          <Tabs value={selectedStage} onValueChange={(value) => setSelectedStage(value as GovernanceStage)}>
+            <TabsList>
+              <TabsTrigger value="quarantine">Quarantine</TabsTrigger>
+              <TabsTrigger value="canonicalization">Canonicalize</TabsTrigger>
+              <TabsTrigger value="dedup">Dedup</TabsTrigger>
+              <TabsTrigger value="evaluation">Evaluate</TabsTrigger>
+              <TabsTrigger value="publication">Publish</TabsTrigger>
+            </TabsList>
+          </Tabs>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <ReviewQueue
+              stage={selectedStage}
               onSelect={handleSelect}
               selectedId={selectedItem?.id}
               className="max-h-[calc(100vh-14rem)] overflow-hidden"

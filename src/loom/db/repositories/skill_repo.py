@@ -8,15 +8,28 @@ from typing import Any
 import asyncpg
 import numpy as np
 
-from loom.models.common import CostProfile, DependencyDeclaration, EvalSpec, Scope, TrustTier
+from loom.db.repositories.service_metadata_repo import ServiceMetadataRepo
+from loom.models.common import (
+    AuthorshipStatus,
+    CanonicalizationLevel,
+    CostProfile,
+    DependencyDeclaration,
+    EvalSpec,
+    LifecycleState,
+    Scope,
+    TrustTier,
+)
 from loom.models.skill import Skill, SkillSummary, SkillVersion
 
 # Full column list for skills table
 _SKILL_COLUMNS = (
     "id, slug, name, description, content, category_id, tags, scope, "
-    "version, author_id, signature, trust_tier, cost_profile, "
+    "version, author_id, lifecycle_state, signature, trust_tier, cost_profile, "
     "cost_drivers, estimated_duration, dependencies, eval_spec, "
-    "extends, embedding, eval_status, composite_score, "
+    "extends, embedding, current_version_id, published_version_id, provenance_summary, "
+    "display_name, embedding_text, canonical_hash, execution_bundle_hash, "
+    "canonicalization_level, authorship_status, change_type, change_agent, "
+    "change_rationale, diff_summary, eval_status, composite_score, "
     "latest_eval_job_id, signature_key_fingerprint, "
     "source_uri, license, "
     "deprecated_at, successor_slug, stale_since, behavioral_score, "
@@ -50,10 +63,13 @@ def _row_to_skill(row: asyncpg.Record) -> Skill:
         else:
             d["embedding"] = list(embedding)
     # asyncpg returns JSONB as strings — parse them for Pydantic
-    for key in ("dependencies", "eval_spec", "cost_drivers"):
+    for key in ("dependencies", "eval_spec", "cost_drivers", "provenance_summary", "diff_summary"):
         val = d.get(key)
         if isinstance(val, str):
             d[key] = json.loads(val)
+    latest_eval_job_id = d.get("latest_eval_job_id")
+    if latest_eval_job_id is not None and not isinstance(latest_eval_job_id, str):
+        d["latest_eval_job_id"] = str(latest_eval_job_id)
     return Skill(**d)
 
 
@@ -103,74 +119,123 @@ class SkillRepo:
         embedding: list[float] | None = None,
         source_uri: str | None = None,
         license: str | None = None,
+        lifecycle_state: LifecycleState = LifecycleState.PUBLISHED,
+        provenance_summary: dict[str, object] | None = None,
     ) -> Skill:
         """Insert a new skill and initial version record, returning the Skill."""
         cost_drivers = cost_drivers or []
         deps_dict = dependencies.model_dump()
         eval_dict = eval_spec.model_dump()
+        provenance_json = provenance_summary or {}
+        embedding_text = f"{name} — {description}".strip(" —")
 
-        # Insert skill row
-        row = await self._conn.fetchrow(
-            f"""
-            INSERT INTO skills (
-                slug, name, description, content, category_id, tags, scope, version,
-                author_id, signature, trust_tier, cost_profile, cost_drivers,
-                estimated_duration, dependencies, eval_spec, extends, embedding,
-                source_uri, license
-            ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8,
-                $9, $10, $11, $12, $13,
-                $14, $15, $16, $17, $18,
-                $19, $20
+        async with self._conn.transaction():
+            row = await self._conn.fetchrow(
+                """
+                INSERT INTO skills (
+                    slug, name, description, content, category_id, tags, scope, version,
+                    author_id, lifecycle_state, signature, trust_tier, cost_profile, cost_drivers,
+                    estimated_duration, dependencies, eval_spec, extends, embedding,
+                    source_uri, license, provenance_summary, display_name, embedding_text,
+                    canonicalization_level, authorship_status, change_type, change_agent,
+                    change_rationale
+                ) VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8,
+                    $9, $10, $11, $12, $13, $14,
+                    $15, $16, $17, $18, $19,
+                    $20, $21, $22::jsonb, $23, $24,
+                    $25, $26, $27, $28, $29
+                )
+                RETURNING id
+                """,
+                slug,
+                name,
+                description,
+                content,
+                category_id,
+                tags,
+                scope.value,
+                version,
+                author_id,
+                lifecycle_state.value,
+                signature,
+                trust_tier.value,
+                cost_profile.value,
+                cost_drivers,
+                estimated_duration,
+                deps_dict,
+                eval_dict,
+                extends,
+                _to_vector(embedding),
+                source_uri,
+                license,
+                json.dumps(provenance_json),
+                name,
+                embedding_text,
+                CanonicalizationLevel.NONE.value,
+                AuthorshipStatus.AUTHOR_OWNED.value,
+                "author_submission"
+                if lifecycle_state == LifecycleState.PUBLISHED
+                else "source_import",
+                f"author/{author_id}",
+                "Initial skill creation",
             )
-            RETURNING {_SKILL_COLUMNS}
-            """,
-            slug,
-            name,
-            description,
-            content,
-            category_id,
-            tags,
-            scope.value,
-            version,
-            author_id,
-            signature,
-            trust_tier.value,
-            cost_profile.value,
-            cost_drivers,
-            estimated_duration,
-            deps_dict,
-            eval_dict,
-            extends,
-            _to_vector(embedding),
-            source_uri,
-            license,
-        )
+            skill_id = row["id"]
 
-        skill = _row_to_skill(row)
+            version_row = await self._conn.fetchrow(
+                """
+                INSERT INTO skill_versions (
+                    skill_id, version, content, dependencies, eval_spec,
+                    cost_profile, cost_drivers, estimated_duration, extends,
+                    signature, author_id, canonical_hash, display_name, embedding_text,
+                    canonicalization_level, authorship_status, change_type, change_agent,
+                    change_rationale
+                ) VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                    $11, $12, $13, $14, $15, $16, $17, $18, $19
+                )
+                RETURNING id
+                """,
+                skill_id,
+                version,
+                content,
+                deps_dict,
+                eval_dict,
+                cost_profile.value,
+                cost_drivers,
+                estimated_duration,
+                extends,
+                signature,
+                author_id,
+                None,
+                name,
+                embedding_text,
+                CanonicalizationLevel.NONE.value,
+                AuthorshipStatus.AUTHOR_OWNED.value,
+                "author_submission"
+                if lifecycle_state == LifecycleState.PUBLISHED
+                else "source_import",
+                f"author/{author_id}",
+                "Initial skill creation",
+            )
+            version_id = version_row["id"]
+            published_version_id = (
+                version_id if lifecycle_state == LifecycleState.PUBLISHED else None
+            )
+            await self._conn.execute(
+                """
+                UPDATE skills
+                SET current_version_id = $2, published_version_id = $3
+                WHERE id = $1
+                """,
+                skill_id,
+                version_id,
+                published_version_id,
+            )
 
-        # Insert initial skill_version record
-        await self._conn.execute(
-            """
-            INSERT INTO skill_versions (
-                skill_id, version, content, dependencies, eval_spec,
-                cost_profile, cost_drivers, estimated_duration, extends,
-                signature, author_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            """,
-            skill.id,
-            version,
-            content,
-            deps_dict,
-            eval_dict,
-            cost_profile.value,
-            cost_drivers,
-            estimated_duration,
-            extends,
-            signature,
-            author_id,
-        )
-
+        skill = await self.get_by_id(skill_id)
+        if skill is None:
+            raise RuntimeError(f"Inserted skill {skill_id} could not be reloaded")
         return skill
 
     async def create_version(
@@ -219,6 +284,24 @@ class SkillRepo:
             changelog,
         )
         return SkillVersion(**dict(row))
+
+    async def set_version_pointers(
+        self,
+        skill_id: uuid_mod.UUID,
+        *,
+        current_version_id: uuid_mod.UUID,
+        published_version_id: uuid_mod.UUID | None = None,
+    ) -> None:
+        """Update current and optionally published version pointers."""
+        set_parts = ["current_version_id = $2"]
+        params: list[Any] = [skill_id, current_version_id]
+        if published_version_id is not None:
+            params.append(published_version_id)
+            set_parts.append(f"published_version_id = ${len(params)}")
+        await self._conn.execute(
+            f"UPDATE skills SET {', '.join(set_parts)} WHERE id = $1",  # noqa: S608
+            *params,
+        )
 
     async def update(
         self,
@@ -277,6 +360,15 @@ class SkillRepo:
                 SELECT s.id, s.slug, s.name, s.description, s.category_id,
                        s.tags, s.scope, s.author_id, s.signature, s.trust_tier,
                        s.embedding, s.created_at, s.updated_at,
+                       s.lifecycle_state, s.current_version_id, s.published_version_id,
+                       s.provenance_summary, s.display_name, s.embedding_text,
+                       s.canonical_hash, s.execution_bundle_hash, s.canonicalization_level,
+                       s.authorship_status, s.change_type, s.change_agent, s.change_rationale,
+                       s.diff_summary, s.eval_status, s.composite_score, s.latest_eval_job_id,
+                       s.signature_key_fingerprint, s.source_uri, s.license,
+                       s.deprecated_at, s.successor_slug, s.stale_since, s.behavioral_score,
+                       s.last_eval_at, s.resolution_count,
+                       sv.id AS resolved_version_id,
                        sv.version, sv.content, sv.dependencies, sv.eval_spec,
                        sv.cost_profile, sv.cost_drivers, sv.estimated_duration, sv.extends
                 FROM skills s
@@ -293,7 +385,39 @@ class SkillRepo:
             )
         if row is None:
             return None
-        return _row_to_skill(row)
+        skill = _row_to_skill(row)
+        row_data = dict(row)
+        resolved_version_id = (
+            row_data.get("resolved_version_id")
+            or skill.published_version_id
+            or skill.current_version_id
+        )
+        if resolved_version_id is None:
+            return skill
+
+        service_repo = ServiceMetadataRepo(self._conn)
+        external_services = await service_repo.list_skill_external_services(resolved_version_id)
+        pricing = await service_repo.list_pricing_facts(skill_version_id=resolved_version_id)
+        setup_requirements = await service_repo.list_setup_requirements(
+            skill_version_id=resolved_version_id
+        )
+        requires_paid_service = any(
+            item.pricing_summary.get("pricing_model") not in (None, "free", "unknown")
+            or item.pricing_summary.get("requires_paid_account") is True
+            for item in external_services
+        ) or any(f.pricing_model not in ("free", "unknown") for f in pricing)
+        requires_network = bool(skill.dependencies.trust_requirements.network_access) or bool(
+            external_services
+        )
+        return skill.model_copy(
+            update={
+                "external_services": external_services,
+                "pricing": pricing,
+                "setup_requirements": setup_requirements,
+                "requires_paid_service": requires_paid_service,
+                "requires_network": requires_network,
+            }
+        )
 
     async def get_by_id(self, skill_id: uuid_mod.UUID) -> Skill | None:
         """Return a skill by id."""
@@ -322,6 +446,8 @@ class SkillRepo:
             params.append(trust_tier.value)
             conditions.append(f"trust_tier = ${len(params)}")
 
+        conditions.append("lifecycle_state = 'published'")
+
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         rows = await self._conn.fetch(
             f"""
@@ -341,7 +467,7 @@ class SkillRepo:
         trust_tier: TrustTier | None = None,
     ) -> list[Skill]:
         """Return skills ordered by vector similarity."""
-        conditions: list[str] = ["embedding IS NOT NULL"]
+        conditions: list[str] = ["embedding IS NOT NULL", "lifecycle_state = 'published'"]
         params: list[Any] = [np.array(query_embedding, dtype=np.float32)]
 
         if category_id is not None:
@@ -373,7 +499,7 @@ class SkillRepo:
         trust_tier: TrustTier | None = None,
     ) -> list[SkillSummary]:
         """Return skill summaries ordered by vector similarity (lightweight)."""
-        conditions: list[str] = ["embedding IS NOT NULL"]
+        conditions: list[str] = ["embedding IS NOT NULL", "lifecycle_state = 'published'"]
         params: list[Any] = [np.array(query_embedding, dtype=np.float32)]
 
         if category_id is not None:
@@ -410,6 +536,7 @@ class SkillRepo:
             SELECT {_SKILL_COLUMNS}
             FROM skills
             WHERE trust_tier IN ({placeholders})
+              AND lifecycle_state = 'published'
             ORDER BY last_eval_at ASC NULLS FIRST
             LIMIT ${len(params)}
             """,  # noqa: S608
@@ -477,7 +604,15 @@ class SkillRepo:
         description: str | None = None,
         tags: list[str] | None = None,
         embedding: list[float] | None = None,
+        embedding_text: str | None = None,
         eval_spec: EvalSpec | None = None,
+        lifecycle_state: LifecycleState | None = None,
+        provenance_summary: dict[str, object] | None = None,
+        canonicalization_level: CanonicalizationLevel | None = None,
+        authorship_status: AuthorshipStatus | None = None,
+        change_type: str | None = None,
+        change_agent: str | None = None,
+        change_rationale: str | None = None,
     ) -> None:
         """Update searchable metadata fields (used by vetting pipeline)."""
         set_parts: list[str] = ["updated_at = now()"]
@@ -493,14 +628,42 @@ class SkillRepo:
             params.append(tags)
             set_parts.append(f"tags = ${len(params)}")
         if embedding is not None:
-            params.append(str(embedding))
+            params.append(_to_vector(embedding))
             set_parts.append(f"embedding = ${len(params)}::vector")
+        if embedding_text is not None:
+            params.append(embedding_text)
+            set_parts.append(f"embedding_text = ${len(params)}")
         if eval_spec is not None:
             params.append(json.dumps(eval_spec.model_dump(mode="json")))
             set_parts.append(f"eval_spec = ${len(params)}::jsonb")
+        if lifecycle_state is not None:
+            params.append(lifecycle_state.value)
+            set_parts.append(f"lifecycle_state = ${len(params)}")
+        if provenance_summary is not None:
+            params.append(json.dumps(provenance_summary))
+            set_parts.append(f"provenance_summary = ${len(params)}::jsonb")
+        if canonicalization_level is not None:
+            params.append(canonicalization_level.value)
+            set_parts.append(f"canonicalization_level = ${len(params)}")
+        if authorship_status is not None:
+            params.append(authorship_status.value)
+            set_parts.append(f"authorship_status = ${len(params)}")
+        if change_type is not None:
+            params.append(change_type)
+            set_parts.append(f"change_type = ${len(params)}")
+        if change_agent is not None:
+            params.append(change_agent)
+            set_parts.append(f"change_agent = ${len(params)}")
+        if change_rationale is not None:
+            params.append(change_rationale)
+            set_parts.append(f"change_rationale = ${len(params)}")
 
         if len(params) == 0:
             return  # nothing to update
+
+        if name is not None:
+            params.append(name)
+            set_parts.append(f"display_name = ${len(params)}")
 
         params.append(skill_id)
         await self._conn.execute(
@@ -558,7 +721,8 @@ class SkillRepo:
             f"""
             SELECT {_SKILL_COLUMNS}
             FROM skills
-            WHERE eval_status IS NULL OR eval_status = 'pending'
+            WHERE (eval_status IS NULL OR eval_status = 'pending')
+              AND lifecycle_state = 'published'
             ORDER BY created_at ASC
             LIMIT $1
             """,

@@ -6,16 +6,6 @@ import { formatRelativeTime } from '@/lib/format'
 import { TrustBadge } from '@/components/shared/TrustBadge'
 import { FlowDiagram } from '@/components/inspect/FlowDiagram'
 import { Badge } from '@/components/ui/badge'
-import type { TrustTier } from '@/types/api'
-
-const TRUST_RANK: Record<TrustTier, number> = {
-  experimental: 0,
-  community: 1,
-  verified: 2,
-}
-
-const RANK_TO_TIER: TrustTier[] = ['experimental', 'community', 'verified']
-
 interface CapabilityDetailProps {
   slug: string
   className?: string
@@ -44,15 +34,16 @@ export function CapabilityDetail({ slug, className }: CapabilityDetailProps) {
     )
   }
 
-  // Aggregate trust tier: minimum across steps
-  const stepTiers = capability.steps.map(() => capability.trust_tier)
-  const minRank = Math.min(...stepTiers.map((t) => TRUST_RANK[t]))
-  const aggregateTier = RANK_TO_TIER[minRank] ?? 'experimental'
-
   const deps = capability.dependencies
   const hasDeps =
     deps &&
     (deps.mcp_servers.length > 0 || deps.apis.length > 0 || deps.trust_requirements.network_access)
+  const authorshipLabel =
+    capability.authorship_status === 'loom_derived'
+      ? 'Derived by Loom'
+      : capability.authorship_status === 'loom_amended'
+        ? 'Normalized by Loom'
+        : 'Authored by source submitter'
 
   return (
     <div className={cn('space-y-8', className)}>
@@ -60,11 +51,12 @@ export function CapabilityDetail({ slug, className }: CapabilityDetailProps) {
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-3xl font-bold tracking-tight">{capability.name}</h1>
-          <TrustBadge tier={aggregateTier} size="lg" />
+          <TrustBadge tier={capability.trust_tier} size="lg" />
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
           <span className="font-mono">{capability.slug}</span>
           <span>v{capability.version}</span>
+          <span>{capability.lifecycle_state}</span>
           {capability.created_at && (
             <span className="flex items-center gap-1">
               <Calendar className="h-3.5 w-3.5" />
@@ -93,38 +85,72 @@ export function CapabilityDetail({ slug, className }: CapabilityDetailProps) {
       {/* Description */}
       <p className="text-base leading-relaxed text-muted-foreground">{capability.description}</p>
 
+      <section className="rounded-lg border bg-muted/20 p-4 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">{authorshipLabel}</Badge>
+          {capability.canonicalization_level && (
+            <Badge variant="secondary">{capability.canonicalization_level}</Badge>
+          )}
+          {capability.published_version_id && (
+            <Badge variant="secondary">published revision</Badge>
+          )}
+        </div>
+        {capability.provenance_summary && Object.keys(capability.provenance_summary).length > 0 && (
+          <pre className="rounded-md bg-background p-3 text-[11px] whitespace-pre-wrap overflow-x-auto">
+            {JSON.stringify(capability.provenance_summary, null, 2)}
+          </pre>
+        )}
+        <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
+          {capability.current_version_id && <div>Current revision: <span className="font-mono">{capability.current_version_id}</span></div>}
+          {capability.published_version_id && <div>Published revision: <span className="font-mono">{capability.published_version_id}</span></div>}
+          {capability.capability_root_hash && <div>Capability root hash: <span className="font-mono">{capability.capability_root_hash}</span></div>}
+          {capability.execution_bundle_hash && <div>Bundle hash: <span className="font-mono">{capability.execution_bundle_hash}</span></div>}
+        </div>
+      </section>
+
       {/* Flow Diagram */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Execution Pipeline</h2>
         <FlowDiagram capability={capability} />
       </section>
 
-      {/* Per-step trust breakdown */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Steps</h2>
         <div className="space-y-2">
           {capability.steps.map((step, i) => {
-            // Extract slug from loom://slug format
+            const isLocalSkillRef = step.skill_ref.startsWith('loom://')
             const slug = step.skill_ref.replace(/^loom:\/\//, '')
-            return (
-              <Link
-                key={i}
-                to="/skills/$slug"
-                params={{ slug }}
-                className={cn(
-                  'flex items-center gap-3 rounded-lg border px-3 py-2 hover:bg-accent/50 transition-colors',
-                  !step.required && 'border-dashed',
-                )}
-              >
+            const itemClassName = cn(
+              'flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors',
+              !step.required && 'border-dashed',
+              isLocalSkillRef && 'hover:bg-accent/50',
+            )
+
+            const content = (
+              <>
                 <span className="text-sm font-medium font-mono">{step.skill_ref}</span>
                 <span className="text-xs text-muted-foreground">{step.role}</span>
-                <TrustBadge tier={capability.trust_tier} size="sm" />
                 {!step.required && (
                   <Badge variant="secondary" className="text-[10px]">
                     optional
                   </Badge>
                 )}
+              </>
+            )
+
+            return isLocalSkillRef ? (
+              <Link
+                key={i}
+                to="/skills/$slug"
+                params={{ slug }}
+                className={itemClassName}
+              >
+                {content}
               </Link>
+            ) : (
+              <div key={i} className={itemClassName}>
+                {content}
+              </div>
             )
           })}
         </div>

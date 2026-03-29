@@ -36,10 +36,11 @@ class ActivityFeedService:
         return events[:limit]
 
     async def _skill_events(self, since: datetime | None) -> list[ActivityEvent]:
-        where = "WHERE created_at > $1" if since else ""
         params: list[object] = [since] if since else []
         sql = (
-            f"SELECT id, slug, name, created_at FROM skills {where}"
+            f"SELECT id, slug, name, created_at FROM skills "
+            f"WHERE lifecycle_state = 'published' "
+            f"{'AND created_at > $1' if since else ''}"
             " ORDER BY created_at DESC LIMIT 100"
         )
         rows = await self._conn.fetch(sql, *params)
@@ -56,10 +57,11 @@ class ActivityFeedService:
         ]
 
     async def _capability_events(self, since: datetime | None) -> list[ActivityEvent]:
-        where = "WHERE created_at > $1" if since else ""
         params: list[object] = [since] if since else []
         sql = (
-            f"SELECT id, slug, name, created_at FROM capabilities {where}"
+            f"SELECT id, slug, name, created_at FROM capabilities "
+            f"WHERE lifecycle_state = 'published' "
+            f"{'AND created_at > $1' if since else ''}"
             " ORDER BY created_at DESC LIMIT 100"
         )
         rows = await self._conn.fetch(sql, *params)
@@ -76,14 +78,14 @@ class ActivityFeedService:
         ]
 
     async def _trust_events(self, since: datetime | None) -> list[ActivityEvent]:
-        where = "WHERE t.created_at > $1" if since else ""
         params: list[object] = [since] if since else []
         sql = f"""
             SELECT t.id, t.previous_tier, t.new_tier, t.reason, t.created_at,
                    s.slug, s.name
             FROM trust_audit_log t
             JOIN skills s ON s.id = t.skill_id
-            {where}
+            WHERE s.lifecycle_state = 'published'
+            {"AND t.created_at > $1" if since else ""}
             ORDER BY t.created_at DESC LIMIT 100
         """
         rows = await self._conn.fetch(sql, *params)
@@ -91,6 +93,8 @@ class ActivityFeedService:
         for row in rows:
             prev_rank = _trust_rank(row["previous_tier"])
             new_rank = _trust_rank(row["new_tier"])
+            if new_rank == prev_rank:
+                continue
             event_type = "trust_promoted" if new_rank > prev_rank else "trust_demoted"
             events.append(
                 ActivityEvent(
@@ -110,17 +114,17 @@ class ActivityFeedService:
         return events
 
     async def _eval_events(self, since: datetime | None) -> list[ActivityEvent]:
-        where_clause = "WHERE e.status = 'completed'"
         params: list[object] = []
         if since:
-            where_clause += " AND e.completed_at > $1"
             params.append(since)
         sql = f"""
             SELECT e.id, e.composite_score, e.completed_at,
                    s.slug, s.name
             FROM eval_jobs e
             JOIN skills s ON s.id = e.skill_id
-            {where_clause}
+            WHERE e.status = 'completed'
+              AND s.lifecycle_state = 'published'
+              {"AND e.completed_at > $1" if since else ""}
             ORDER BY e.completed_at DESC LIMIT 100
         """
         rows = await self._conn.fetch(sql, *params)
@@ -139,7 +143,7 @@ class ActivityFeedService:
         ]
 
 
-_TRUST_RANK = {"experimental": 0, "community": 1, "verified": 2}
+_TRUST_RANK = {"unvetted": -1, "experimental": 0, "community": 1, "verified": 2}
 
 
 def _trust_rank(tier: str) -> int:

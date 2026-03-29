@@ -5,8 +5,9 @@ import {
   getUsageHeatmap,
   getGovernanceQueue,
   submitReview,
+  requestRerun,
 } from '@/api/stats'
-import type { GovernanceReviewSubmission } from '@/types/api'
+import type { GovernanceReviewSubmission, GovernanceRerunSubmission } from '@/types/api'
 
 export function useStatsOverview() {
   return useQuery({
@@ -29,9 +30,9 @@ export function useUsageHeatmap(params?: { period_type?: string; periods?: numbe
   })
 }
 
-export function useGovernanceQueue(params?: { reason?: string }) {
+export function useGovernanceQueue(params?: { reason?: string; stage?: string }) {
   return useQuery({
-    queryKey: ['governance', 'queue', params?.reason],
+    queryKey: ['governance', 'queue', params?.reason, params?.stage],
     queryFn: () => getGovernanceQueue(params),
   })
 }
@@ -42,6 +43,17 @@ export function useSubmitReview() {
     mutationFn: (submission: GovernanceReviewSubmission) => submitReview(submission),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['governance', 'queue'] })
+    },
+  })
+}
+
+export function useRequestRerun() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (submission: GovernanceRerunSubmission) => requestRerun(submission),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['governance', 'queue'] })
+      queryClient.invalidateQueries({ queryKey: ['skill'] })
     },
   })
 }

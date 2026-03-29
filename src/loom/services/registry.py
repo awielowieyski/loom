@@ -87,6 +87,8 @@ class RegistryService:
             embedding=embedding,
             source_uri=data.source_uri,
             license=data.license,
+            lifecycle_state=data.lifecycle_state,
+            provenance_summary=data.provenance_summary,
         )
 
     async def update_skill(
@@ -129,7 +131,7 @@ class RegistryService:
         if updated is None:
             raise ValueError(f"Update failed for skill: {slug!r}")
 
-        await self._skill_repo.create_version(
+        version_row = await self._skill_repo.create_version(
             skill_id=existing.id,
             version=data.version,
             content=content,
@@ -141,6 +143,13 @@ class RegistryService:
             estimated_duration=estimated_duration_val,
             extends=extends,
             changelog=data.changelog,
+        )
+        await self._skill_repo.set_version_pointers(
+            existing.id,
+            current_version_id=version_row.id,
+            published_version_id=version_row.id
+            if updated.lifecycle_state.value == "published"
+            else None,
         )
 
         return updated

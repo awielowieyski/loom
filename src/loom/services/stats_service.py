@@ -22,10 +22,12 @@ class StatsService:
             SELECT trust_tier, COUNT(*) AS cnt
             FROM skills
             WHERE deprecated_at IS NULL
+              AND lifecycle_state = 'published'
             GROUP BY trust_tier
             """
         )
         skill_counts: dict[str, int] = {
+            "unvetted": 0,
             "experimental": 0,
             "community": 0,
             "verified": 0,
@@ -34,14 +36,18 @@ class StatsService:
             skill_counts[row["trust_tier"]] = row["cnt"]
 
         # Capability count
-        cap_row = await self._conn.fetchval("SELECT COUNT(*) FROM capabilities")
+        cap_row = await self._conn.fetchval(
+            "SELECT COUNT(*) FROM capabilities WHERE lifecycle_state = 'published'"
+        )
 
         # Behavioral eval coverage: skills with behavioral_score / total active
         total_skills = sum(skill_counts.values())
         behavioral_count = await self._conn.fetchval(
             """
             SELECT COUNT(*) FROM skills
-            WHERE deprecated_at IS NULL AND behavioral_score IS NOT NULL
+            WHERE deprecated_at IS NULL
+              AND lifecycle_state = 'published'
+              AND behavioral_score IS NOT NULL
             """
         )
         behavioral_eval_coverage = behavioral_count / total_skills if total_skills > 0 else 0.0
@@ -51,6 +57,7 @@ class StatsService:
             """
             SELECT COUNT(*) FROM skills
             WHERE deprecated_at IS NULL
+              AND lifecycle_state = 'published'
               AND (last_eval_at IS NULL OR last_eval_at < NOW() - INTERVAL '30 days')
             """
         )
@@ -64,13 +71,19 @@ class StatsService:
         res_7d = await self._conn.fetchval(
             """
             SELECT COALESCE(SUM(success_count + partial_count + failure_count), 0)
-            FROM usage_aggregates WHERE window_type = '7d'
+            FROM usage_aggregates ua
+            JOIN skills s ON s.id = ua.skill_id
+            WHERE ua.window_type = '7d'
+              AND s.lifecycle_state = 'published'
             """
         )
         res_30d = await self._conn.fetchval(
             """
             SELECT COALESCE(SUM(success_count + partial_count + failure_count), 0)
-            FROM usage_aggregates WHERE window_type = '30d'
+            FROM usage_aggregates ua
+            JOIN skills s ON s.id = ua.skill_id
+            WHERE ua.window_type = '30d'
+              AND s.lifecycle_state = 'published'
             """
         )
 
@@ -115,6 +128,12 @@ class StatsService:
                 COUNT(*) AS eval_count
             FROM eval_jobs ej
             WHERE ej.status = 'completed'
+              AND EXISTS (
+                  SELECT 1
+                  FROM skills s
+                  WHERE s.id = ej.skill_id
+                    AND s.lifecycle_state = 'published'
+              )
               AND ej.completed_at >= NOW() - ($1::TEXT || ' weeks')::INTERVAL
               {category_filter}
             GROUP BY date_trunc('week', ej.completed_at)
@@ -160,6 +179,7 @@ class StatsService:
             JOIN skills s ON ur.skill_id = s.id
             JOIN categories c ON s.category_id = c.id
             WHERE ur.created_at >= NOW() - ($2::TEXT || ' {trunc}s')::INTERVAL
+              AND s.lifecycle_state = 'published'
             GROUP BY c.slug, date_trunc($1, ur.created_at)
             ORDER BY c.slug, period
             """,

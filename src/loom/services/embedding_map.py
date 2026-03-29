@@ -45,6 +45,7 @@ class EmbeddingMapService:
             FROM skills s
             LEFT JOIN categories c ON s.category_id = c.id
             WHERE s.embedding IS NOT NULL
+              AND s.lifecycle_state = 'published'
             """
         )
 
@@ -56,6 +57,7 @@ class EmbeddingMapService:
             FROM capabilities cap
             LEFT JOIN categories c ON cap.category_id = c.id
             WHERE cap.embedding IS NOT NULL
+              AND cap.lifecycle_state = 'published'
             """
         )
 

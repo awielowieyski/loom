@@ -1,4 +1,4 @@
-import { ShieldCheck, Users, FlaskConical } from 'lucide-react'
+import { ShieldCheck, Users, FlaskConical, ShieldOff } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import type { TrustTier } from '@/types/api'
@@ -11,6 +11,11 @@ const TIER_CONFIG: Record<
     className: string
   }
 > = {
+  unvetted: {
+    label: 'Unvetted',
+    icon: ShieldOff,
+    className: 'bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-300',
+  },
   experimental: {
     label: 'Experimental',
     icon: FlaskConical,

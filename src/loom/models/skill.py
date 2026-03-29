@@ -6,13 +6,17 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from loom.models.common import (
+    AuthorshipStatus,
+    CanonicalizationLevel,
     CostProfile,
     DependencyDeclaration,
     EstimatedDuration,
     EvalSpec,
+    LifecycleState,
     Scope,
     TrustTier,
 )
+from loom.models.service_metadata import PricingFact, ServiceSetupRequirement, SkillExternalService
 
 
 class SkillCreate(BaseModel):
@@ -33,6 +37,8 @@ class SkillCreate(BaseModel):
     extends: str | None = None
     source_uri: str | None = None
     license: str | None = None
+    lifecycle_state: LifecycleState = LifecycleState.PUBLISHED
+    provenance_summary: dict[str, object] | None = None
 
 
 class Skill(BaseModel):
@@ -61,6 +67,25 @@ class Skill(BaseModel):
     signature_key_fingerprint: str | None = None
     source_uri: str | None = None
     license: str | None = None
+    lifecycle_state: LifecycleState = LifecycleState.PUBLISHED
+    current_version_id: uuid_mod.UUID | None = None
+    published_version_id: uuid_mod.UUID | None = None
+    provenance_summary: dict[str, object] | None = None
+    display_name: str | None = None
+    embedding_text: str | None = None
+    canonical_hash: str | None = None
+    execution_bundle_hash: str | None = None
+    canonicalization_level: CanonicalizationLevel | None = None
+    authorship_status: AuthorshipStatus | None = None
+    change_type: str | None = None
+    change_agent: str | None = None
+    change_rationale: str | None = None
+    diff_summary: dict[str, object] | None = None
+    external_services: list[SkillExternalService] = Field(default_factory=list)
+    pricing: list[PricingFact] = Field(default_factory=list)
+    setup_requirements: list[ServiceSetupRequirement] = Field(default_factory=list)
+    requires_paid_service: bool = False
+    requires_network: bool = False
     # M4: living registry columns
     deprecated_at: datetime | None = None
     successor_slug: str | None = None
@@ -127,4 +152,17 @@ class SkillVersion(BaseModel):
     signature: str | None = None
     author_id: uuid_mod.UUID
     changelog: str | None = None
+    canonical_hash: str | None = None
+    execution_bundle_hash: str | None = None
+    change_type: str | None = None
+    change_agent: str | None = None
+    change_rationale: str | None = None
+    diff_summary: dict[str, object] | None = None
+    parent_version_id: uuid_mod.UUID | None = None
+    derived_from_artifact_ids: list[uuid_mod.UUID] | list[str] | None = None
+    display_name: str | None = None
+    embedding_text: str | None = None
+    safety_notices: list[dict[str, object]] | list[str] | None = None
+    canonicalization_level: CanonicalizationLevel | None = None
+    authorship_status: AuthorshipStatus | None = None
     created_at: datetime | None = None

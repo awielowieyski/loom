@@ -24,10 +24,11 @@ def test_list_categories_returns_200(client: TestClient) -> None:
     assert isinstance(response.json(), list)
 
 
-def test_list_categories_requires_api_key(client: TestClient) -> None:
-    """GET /api/v1/categories should return 401 without API key."""
+def test_list_categories_allows_anonymous_read(client: TestClient) -> None:
+    """GET /api/v1/categories should allow anonymous reads."""
     response = client.get("/api/v1/categories")
-    assert response.status_code == 401
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
 
 
 def test_list_skills_returns_200(client: TestClient) -> None:
@@ -37,10 +38,11 @@ def test_list_skills_returns_200(client: TestClient) -> None:
     assert isinstance(response.json(), list)
 
 
-def test_list_skills_requires_api_key(client: TestClient) -> None:
-    """GET /api/v1/skills should return 401 without API key."""
+def test_list_skills_allows_anonymous_read(client: TestClient) -> None:
+    """GET /api/v1/skills should allow anonymous reads."""
     response = client.get("/api/v1/skills")
-    assert response.status_code == 401
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
 
 
 def test_get_skill_not_found(client: TestClient) -> None:
