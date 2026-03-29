@@ -8,11 +8,13 @@ interface HeroSearchBarProps {
   onSearch?: (query: string) => void
   /** Fires on Enter — use for full LLM-powered resolve */
   onResolve: (query: string) => void
+  /** Fires when the search is cleared — use to reset parent state */
+  onClear?: () => void
   isLoading?: boolean
   className?: string
 }
 
-export function HeroSearchBar({ onSearch, onResolve, isLoading, className }: HeroSearchBarProps) {
+export function HeroSearchBar({ onSearch, onResolve, onClear, isLoading, className }: HeroSearchBarProps) {
   const [value, setValue] = useState('')
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -46,8 +48,9 @@ export function HeroSearchBar({ onSearch, onResolve, isLoading, className }: Her
 
   const clear = useCallback(() => {
     setValue('')
+    onClear?.()
     inputRef.current?.focus()
-  }, [])
+  }, [onClear])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {

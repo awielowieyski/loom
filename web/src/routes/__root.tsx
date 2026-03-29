@@ -18,9 +18,10 @@ const pageTransition = { duration: 0.2, ease: 'easeOut' as const }
 function RootLayout() {
   const routerState = useRouterState()
   const locationKey = routerState.location.pathname
+  const isHome = locationKey === '/'
 
   return (
-    <AppShell>
+    <AppShell hideSidebar={isHome}>
       <AnimatePresence mode="wait">
         <motion.div
           key={locationKey}

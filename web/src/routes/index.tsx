@@ -7,6 +7,12 @@ import { PrimaryResult } from '@/components/resolve/PrimaryResult'
 import { AlternativeList } from '@/components/resolve/AlternativeList'
 import { ContextToggles } from '@/components/resolve/ContextToggles'
 import { ResolutionHistory, notifyHistoryChange } from '@/components/resolve/ResolutionHistory'
+import { HeroContent } from '@/components/home/HeroContent'
+import { ProblemSection } from '@/components/home/ProblemSection'
+import { HowItWorksSection } from '@/components/home/HowItWorksSection'
+import { ComparisonStrip } from '@/components/home/ComparisonStrip'
+import { ExampleSection } from '@/components/home/ExampleSection'
+import { FinalCTA } from '@/components/home/FinalCTA'
 import { addToHistory } from '@/lib/storage'
 import { unifiedSearch, type SearchResult } from '@/api/search'
 import type { ResolutionContext, ResolvedResult, Alternative } from '@/types/api'
@@ -45,26 +51,11 @@ function LoadingSkeleton() {
   )
 }
 
-function EmptyState() {
-  return (
-    <div className="text-center py-16 space-y-3">
-      <h2 className="text-xl font-semibold text-foreground/80">Find the right skill</h2>
-      <p className="text-muted-foreground max-w-md mx-auto">
-        Describe a task in natural language and Loom will resolve the best-matching skill or
-        capability from the registry, ranked by trust, quality, and fit.
-      </p>
-      <p className="text-xs text-muted-foreground/60">
-        Type to search · Press Enter to resolve with AI
-      </p>
-    </div>
-  )
-}
-
 function isCapability(r: SearchResult): boolean {
   return 'steps' in r || !('content' in r && 'eval_spec' in r)
 }
 
-function QuickResults({ results, onSelect }: { results: SearchResult[]; onSelect: (name: string) => void }) {
+function QuickResults({ results }: { results: SearchResult[] }) {
   if (results.length === 0) return null
 
   return (
@@ -98,6 +89,15 @@ function ResolveView() {
   const [quickResults, setQuickResults] = useState<SearchResult[] | null>(null)
 
   const { mutate, isPending } = useResolve()
+
+  // Reset all search state
+  const handleClear = useCallback(() => {
+    setQuickResults(null)
+    setResult(null)
+  }, [])
+
+  // Whether the user has engaged with search at all
+  const isSearchActive = isPending || result !== null || quickResults !== null
 
   // Lightweight DB search on keystroke (no auth, fast)
   const handleSearch = useCallback(async (query: string) => {
@@ -149,31 +149,49 @@ function ResolveView() {
     : result?.capability?.alternatives ?? []
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
-      <HeroSearchBar
-        onSearch={handleSearch}
-        onResolve={handleResolve}
-        isLoading={isPending}
-      />
+    <div className="max-w-3xl mx-auto">
+      {/* Hero with search */}
+      <HeroContent>
+        <div className="max-w-2xl mx-auto w-full pt-2">
+          <HeroSearchBar
+            onSearch={handleSearch}
+            onResolve={handleResolve}
+            onClear={handleClear}
+            isLoading={isPending}
+          />
+        </div>
+      </HeroContent>
 
-      <ContextToggles context={context} onContextChange={setContext} />
+      {/* Search-related controls and results */}
+      <div className="max-w-2xl mx-auto space-y-4">
+        <ContextToggles context={context} onContextChange={setContext} />
 
-      {quickResults && !isPending && !result && (
-        <QuickResults results={quickResults} onSelect={handleResolve} />
-      )}
+        {quickResults && !isPending && !result && (
+          <QuickResults results={quickResults} />
+        )}
 
-      {isPending && !result && <LoadingSkeleton />}
+        {isPending && !result && <LoadingSkeleton />}
 
-      {result && !isPending && (
-        <div className="space-y-4">
-          <PrimaryResult result={result} />
-          <AlternativeList alternatives={alternatives} onSelect={handleAlternativeSelect} />
+        {result && !isPending && (
+          <div className="space-y-4">
+            <PrimaryResult result={result} />
+            <AlternativeList alternatives={alternatives} onSelect={handleAlternativeSelect} />
+          </div>
+        )}
+
+        <ResolutionHistory onSelect={handleResolve} />
+      </div>
+
+      {/* Informational sections — shown when search is not active */}
+      {!isSearchActive && (
+        <div>
+          <ProblemSection />
+          <HowItWorksSection />
+          <ComparisonStrip />
+          <ExampleSection />
+          <FinalCTA />
         </div>
       )}
-
-      {!result && !isPending && !quickResults && <EmptyState />}
-
-      <ResolutionHistory onSelect={handleResolve} />
     </div>
   )
 }
