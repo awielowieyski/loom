@@ -6,14 +6,12 @@ import { HeroSearchBar } from '@/components/resolve/HeroSearchBar'
 import { PrimaryResult } from '@/components/resolve/PrimaryResult'
 import { AlternativeList } from '@/components/resolve/AlternativeList'
 import { ContextToggles } from '@/components/resolve/ContextToggles'
-import { ResolutionHistory, notifyHistoryChange } from '@/components/resolve/ResolutionHistory'
 import { HeroContent } from '@/components/home/HeroContent'
 import { ProblemSection } from '@/components/home/ProblemSection'
 import { HowItWorksSection } from '@/components/home/HowItWorksSection'
 import { ComparisonStrip } from '@/components/home/ComparisonStrip'
 import { ExampleSection } from '@/components/home/ExampleSection'
 import { FinalCTA } from '@/components/home/FinalCTA'
-import { addToHistory } from '@/lib/storage'
 import { unifiedSearch, type SearchResult } from '@/api/search'
 import type { ResolutionContext, ResolvedResult, Alternative } from '@/types/api'
 
@@ -118,8 +116,6 @@ function ResolveView() {
         {
           onSuccess: (data) => {
             setResult(data)
-            addToHistory(query)
-            notifyHistoryChange()
           },
         },
       )
@@ -135,8 +131,6 @@ function ResolveView() {
         {
           onSuccess: (data) => {
             setResult(data)
-            addToHistory(alt.skill.name)
-            notifyHistoryChange()
           },
         },
       )
@@ -149,10 +143,10 @@ function ResolveView() {
     : result?.capability?.alternatives ?? []
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="max-w-3xl mx-auto pb-8 md:pb-12">
       {/* Hero with search */}
-      <HeroContent>
-        <div className="max-w-2xl mx-auto w-full pt-2">
+      <HeroContent isSearchActive={isSearchActive}>
+        <div className="max-w-2xl mx-auto w-full pt-3 md:pt-4">
           <HeroSearchBar
             onSearch={handleSearch}
             onResolve={handleResolve}
@@ -163,8 +157,10 @@ function ResolveView() {
       </HeroContent>
 
       {/* Search-related controls and results */}
-      <div className="max-w-2xl mx-auto space-y-4">
-        <ContextToggles context={context} onContextChange={setContext} />
+      <div className="max-w-2xl mx-auto mt-8 space-y-5 md:mt-10 md:space-y-6">
+        {isSearchActive && (
+          <ContextToggles context={context} onContextChange={setContext} />
+        )}
 
         {quickResults && !isPending && !result && (
           <QuickResults results={quickResults} />
@@ -178,13 +174,11 @@ function ResolveView() {
             <AlternativeList alternatives={alternatives} onSelect={handleAlternativeSelect} />
           </div>
         )}
-
-        <ResolutionHistory onSelect={handleResolve} />
       </div>
 
       {/* Informational sections — shown when search is not active */}
       {!isSearchActive && (
-        <div>
+        <div className="mt-14 md:mt-18">
           <ProblemSection />
           <HowItWorksSection />
           <ComparisonStrip />

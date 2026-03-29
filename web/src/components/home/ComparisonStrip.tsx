@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 const layers = [
   {
     name: 'Tool catalogues',
-    description: 'Expose available tools',
+    description: 'Tell the agent what tools exist',
     highlighted: false,
   },
   {
@@ -13,35 +13,33 @@ const layers = [
     highlighted: false,
   },
   {
-    name: 'Workflow engines',
-    description: 'Execute defined processes',
-    highlighted: false,
-  },
-  {
-    name: 'Agent frameworks',
-    description: 'Provide runtime structure',
+    name: 'Agent runtimes',
+    description: 'Execute work with tools and memory',
     highlighted: false,
   },
   {
     name: 'Loom',
-    description: 'Resolves the right path for the current environment',
+    description: 'Chooses which path should run here',
     highlighted: true,
   },
 ] as const
 
 export function ComparisonStrip() {
   return (
-    <section className="py-16 border-t">
-      <div className="max-w-3xl mx-auto space-y-12">
+    <section className="border-t py-18 md:py-22">
+      <div className="max-w-3xl mx-auto space-y-12 md:space-y-14">
         {/* Stack comparison */}
-        <div className="space-y-8">
-          <div className="text-center space-y-2">
+        <div className="space-y-9">
+          <div className="text-center space-y-3">
             <h2 className="text-xl md:text-2xl font-semibold tracking-tight">
-              A distinct layer in the stack
+              Where Loom fits
             </h2>
+            <p className="text-sm text-muted-foreground">
+              It sits between discovery and execution.
+            </p>
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {layers.map((layer) => (
               <div
                 key={layer.name}
@@ -68,26 +66,25 @@ export function ComparisonStrip() {
           </div>
 
           <p className="text-xs text-center text-muted-foreground/70">
-            Loom is not a prompt library, skill marketplace, workflow engine, or agent framework.
+            Loom is not a prompt library or a workflow engine.
             <br className="hidden sm:block" />
-            {' '}It is a policy-aware capability router for agent systems.
+            {' '}It is the decision layer that helps an agent choose the right skill or workflow under real constraints.
           </p>
         </div>
 
         {/* Extends mechanism */}
-        <div className="space-y-6">
-          <div className="text-center space-y-2">
+        <div className="space-y-7">
+          <div className="text-center space-y-3">
             <h2 className="text-xl md:text-2xl font-semibold tracking-tight">
-              Layered knowledge, not endless forks
+              Company context without forking
             </h2>
             <p className="text-sm text-muted-foreground max-w-xl mx-auto">
-              The same task needs different things at different scales.
-              Loom&apos;s extends mechanism lets each layer add what it knows
-              without copying or overriding what came before.
+              Shared workflows improve over time. Loom&apos;s extends mechanism lets
+              teams add governance and local preferences without forking the base capability.
             </p>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-accent/50 border border-border/50">
               <Layers className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
               <div>
