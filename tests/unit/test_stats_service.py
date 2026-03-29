@@ -22,7 +22,12 @@ async def test_get_overview_empty_registry() -> None:
     service = StatsService(conn)
     result = await service.get_overview()
 
-    assert result["skill_counts"] == {"experimental": 0, "community": 0, "verified": 0}
+    assert result["skill_counts"] == {
+        "unvetted": 0,
+        "experimental": 0,
+        "community": 0,
+        "verified": 0,
+    }
     assert result["capability_count"] == 0
     assert result["behavioral_eval_coverage"] == 0.0
     assert result["stale_count"] == 0
@@ -81,3 +86,24 @@ async def test_get_usage_heatmap_empty() -> None:
     assert result["categories"] == []
     assert result["periods"] == []
     assert result["data"] == []
+
+
+@pytest.mark.asyncio
+async def test_overview_queries_only_include_published_skills() -> None:
+    conn = _make_conn()
+    conn.fetch.return_value = []
+    conn.fetchval.side_effect = [0, 0, 0, 0, 0, 0]
+
+    service = StatsService(conn)
+    await service.get_overview()
+
+    assert "lifecycle_state = 'published'" in conn.fetch.await_args.args[0]
+    fetchval_sql = [call.args[0] for call in conn.fetchval.await_args_list]
+    assert any("capabilities WHERE lifecycle_state = 'published'" in sql for sql in fetchval_sql)
+    expected_fragment = (
+        "skills\n"
+        "            WHERE deprecated_at IS NULL\n"
+        "              AND lifecycle_state = 'published'"
+    )
+    assert any(expected_fragment in sql for sql in fetchval_sql)
+    assert any("JOIN skills s ON s.id = ua.skill_id" in sql for sql in fetchval_sql)

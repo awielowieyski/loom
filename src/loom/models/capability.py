@@ -8,10 +8,13 @@ from pydantic import BaseModel, Field, field_validator
 
 from loom.extends.resolver import VALID_URI_SCHEMES
 from loom.models.common import (
+    AuthorshipStatus,
+    CanonicalizationLevel,
     CostProfile,
     DependencyDeclaration,
     EstimatedDuration,
     EvalSpec,
+    LifecycleState,
     Scope,
     TrustTier,
 )
@@ -70,6 +73,8 @@ class CapabilityCreate(BaseModel):
     estimated_duration: EstimatedDuration | str = EstimatedDuration.SLOW
     eval_spec: EvalSpec = EvalSpec()
     extends: str | None = None
+    lifecycle_state: LifecycleState = LifecycleState.PUBLISHED
+    provenance_summary: dict[str, object] | None = None
 
     @field_validator("slug")
     @classmethod
@@ -121,6 +126,19 @@ class Capability(BaseModel):
     embedding: list[float] | None = Field(default=None, exclude=True)
     eval_status: str | None = None
     composite_score: float | None = None
+    lifecycle_state: LifecycleState = LifecycleState.PUBLISHED
+    current_version_id: uuid_mod.UUID | None = None
+    published_version_id: uuid_mod.UUID | None = None
+    provenance_summary: dict[str, object] | None = None
+    display_name: str | None = None
+    embedding_text: str | None = None
+    capability_root_hash: str | None = None
+    canonicalization_level: CanonicalizationLevel | None = None
+    authorship_status: AuthorshipStatus | None = None
+    change_type: str | None = None
+    change_agent: str | None = None
+    change_rationale: str | None = None
+    diff_summary: dict[str, object] | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -207,4 +225,17 @@ class CapabilityVersion(BaseModel):
     extends: str | None = None
     author_id: uuid_mod.UUID
     changelog: str | None = None
+    capability_root_hash: str | None = None
+    execution_bundle_hash: str | None = None
+    change_type: str | None = None
+    change_agent: str | None = None
+    change_rationale: str | None = None
+    diff_summary: dict[str, object] | None = None
+    parent_version_id: uuid_mod.UUID | None = None
+    derived_from_artifact_ids: list[uuid_mod.UUID] | list[str] | None = None
+    display_name: str | None = None
+    embedding_text: str | None = None
+    safety_notices: list[dict[str, object]] | list[str] | None = None
+    canonicalization_level: CanonicalizationLevel | None = None
+    authorship_status: AuthorshipStatus | None = None
     created_at: datetime | None = None

@@ -15,9 +15,12 @@ from loom.models.capability import (
     DataFlowEdge,
 )
 from loom.models.common import (
+    AuthorshipStatus,
+    CanonicalizationLevel,
     CostProfile,
     DependencyDeclaration,
     EvalSpec,
+    LifecycleState,
     Scope,
     TrustTier,
 )
@@ -25,10 +28,13 @@ from loom.models.common import (
 # Full column list for capabilities table
 _CAPABILITY_COLUMNS = (
     "id, slug, name, description, category_id, tags, scope, "
-    "version, author_id, trust_tier, steps, preconditions, "
+    "version, author_id, lifecycle_state, trust_tier, steps, preconditions, "
     "expected_outcome, data_flow, dependencies, cost_profile, "
     "cost_drivers, estimated_duration, eval_spec, extends, "
-    "embedding, eval_status, composite_score, created_at, updated_at"
+    "embedding, current_version_id, published_version_id, provenance_summary, "
+    "display_name, embedding_text, capability_root_hash, execution_bundle_hash, "
+    "canonicalization_level, authorship_status, change_type, change_agent, "
+    "change_rationale, diff_summary, eval_status, composite_score, created_at, updated_at"
 )
 
 
@@ -58,6 +64,12 @@ def _row_to_capability(row: asyncpg.Record) -> Capability:
     d["preconditions"] = d.get("preconditions") or []
     d["expected_outcome"] = d.get("expected_outcome") or ""
     d["data_flow"] = _parse_data_flow(d.get("data_flow"))
+    for key in ("provenance_summary", "diff_summary"):
+        val = d.get(key)
+        if isinstance(val, str):
+            import json
+
+            d[key] = json.loads(val)
     return Capability(**d)
 
 
@@ -107,6 +119,8 @@ class CapabilityRepo:
         estimated_duration: str = "slow",
         extends: str | None = None,
         embedding: list[float] | None = None,
+        lifecycle_state: LifecycleState = LifecycleState.PUBLISHED,
+        provenance_summary: dict[str, object] | None = None,
     ) -> Capability:
         """Insert a new capability and initial version record."""
         cost_drivers = cost_drivers or []
@@ -123,19 +137,24 @@ class CapabilityRepo:
         try:
             async with self._conn.transaction():
                 row = await self._conn.fetchrow(
-                    f"""
+                    """
                     INSERT INTO capabilities (
                         slug, name, description, category_id, tags, scope, version,
-                        author_id, trust_tier, steps, preconditions, expected_outcome,
+                        author_id, lifecycle_state, trust_tier, steps, preconditions,
+                        expected_outcome,
                         data_flow, dependencies, cost_profile, cost_drivers,
-                        estimated_duration, eval_spec, extends, embedding
+                        estimated_duration, eval_spec, extends, embedding, provenance_summary,
+                        display_name, embedding_text, canonicalization_level, authorship_status,
+                        change_type, change_agent, change_rationale
                     ) VALUES (
                         $1, $2, $3, $4, $5, $6, $7,
-                        $8, $9, $10, $11, $12,
-                        $13, $14, $15, $16,
-                        $17, $18, $19, $20
+                        $8, $9, $10, $11, $12, $13,
+                        $14, $15, $16, $17,
+                        $18, $19, $20, $21, $22,
+                        $23, $24, $25, $26, $27,
+                        $28, $29
                     )
-                    RETURNING {_CAPABILITY_COLUMNS}
+                    RETURNING id
                     """,
                     slug,
                     name,
@@ -145,6 +164,7 @@ class CapabilityRepo:
                     scope.value,
                     version,
                     author_id,
+                    lifecycle_state.value,
                     trust_tier.value,
                     steps_json,
                     preconditions,
@@ -157,20 +177,35 @@ class CapabilityRepo:
                     eval_dict,
                     extends,
                     _to_vector(embedding),
+                    provenance_summary or {},
+                    name,
+                    f"{name} — {description}".strip(" —"),
+                    CanonicalizationLevel.NONE.value,
+                    AuthorshipStatus.AUTHOR_OWNED.value,
+                    "author_submission"
+                    if lifecycle_state == LifecycleState.PUBLISHED
+                    else "source_import",
+                    f"author/{author_id}",
+                    "Initial capability creation",
                 )
-
-                capability = _row_to_capability(row)
+                capability_id = row["id"]
 
                 # Insert initial version record
-                await self._conn.execute(
+                version_row = await self._conn.fetchrow(
                     """
                     INSERT INTO capability_versions (
                         capability_id, version, steps, preconditions, expected_outcome,
                         data_flow, dependencies, cost_profile, cost_drivers,
-                        estimated_duration, eval_spec, extends, author_id
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                        estimated_duration, eval_spec, extends, author_id, display_name,
+                        embedding_text, canonicalization_level, authorship_status, change_type,
+                        change_agent, change_rationale
+                    ) VALUES (
+                        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                        $14, $15, $16, $17, $18, $19, $20
+                    )
+                    RETURNING id
                     """,
-                    capability.id,
+                    capability_id,
                     version,
                     steps_json,
                     preconditions,
@@ -183,11 +218,37 @@ class CapabilityRepo:
                     eval_dict,
                     extends,
                     author_id,
+                    name,
+                    f"{name} — {description}".strip(" —"),
+                    CanonicalizationLevel.NONE.value,
+                    AuthorshipStatus.AUTHOR_OWNED.value,
+                    "author_submission"
+                    if lifecycle_state == LifecycleState.PUBLISHED
+                    else "source_import",
+                    f"author/{author_id}",
+                    "Initial capability creation",
+                )
+                version_id = version_row["id"]
+                published_version_id = (
+                    version_id if lifecycle_state == LifecycleState.PUBLISHED else None
+                )
+                await self._conn.execute(
+                    """
+                    UPDATE capabilities
+                    SET current_version_id = $2, published_version_id = $3
+                    WHERE id = $1
+                    """,
+                    capability_id,
+                    version_id,
+                    published_version_id,
                 )
 
         except UniqueViolationError:
             raise ValueError(f"Version '{version}' already exists for this capability") from None
 
+        capability = await self.get_by_id(capability_id)
+        if capability is None:
+            raise RuntimeError(f"Inserted capability {capability_id} could not be reloaded")
         return capability
 
     async def get_by_slug(self, slug: str) -> Capability | None:
@@ -331,6 +392,8 @@ class CapabilityRepo:
             params.append(trust_tier.value)
             conditions.append(f"trust_tier = ${len(params)}")
 
+        conditions.append("lifecycle_state = 'published'")
+
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         params.append(limit)
         limit_param = f"${len(params)}"
@@ -356,7 +419,7 @@ class CapabilityRepo:
         trust_tier: TrustTier | None = None,
     ) -> list[CapabilitySummary]:
         """Return capability summaries ordered by vector similarity."""
-        conditions: list[str] = ["embedding IS NOT NULL"]
+        conditions: list[str] = ["embedding IS NOT NULL", "lifecycle_state = 'published'"]
         params: list[Any] = [np.array(query_embedding, dtype=np.float32)]
 
         if category_id is not None:
@@ -419,6 +482,24 @@ class CapabilityRepo:
         if row is None:
             return None
         return _row_to_version(row)
+
+    async def set_version_pointers(
+        self,
+        capability_id: uuid_mod.UUID,
+        *,
+        current_version_id: uuid_mod.UUID,
+        published_version_id: uuid_mod.UUID | None = None,
+    ) -> None:
+        """Update current and optionally published version pointers."""
+        set_parts = ["current_version_id = $2"]
+        params: list[Any] = [capability_id, current_version_id]
+        if published_version_id is not None:
+            params.append(published_version_id)
+            set_parts.append(f"published_version_id = ${len(params)}")
+        await self._conn.execute(
+            f"UPDATE capabilities SET {', '.join(set_parts)} WHERE id = $1",  # noqa: S608
+            *params,
+        )
 
 
 def _row_to_version(row: asyncpg.Record) -> CapabilityVersion:

@@ -41,7 +41,7 @@ export function PrimaryResult({ result }: PrimaryResultProps) {
     : result.capability!.effective_trust_tier
   const compositeScore = isSkill
     ? result.skill!.skill.composite_score
-    : result.capability!.capability.eval_spec ? null : null
+    : result.capability!.capability.composite_score
   const behavioralScore = isSkill ? result.skill!.skill.behavioral_score : null
   const resolutionCount = isSkill ? result.skill!.skill.resolution_count : 0
   const rationale = isSkill

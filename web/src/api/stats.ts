@@ -5,6 +5,8 @@ import type {
   UsageHeatmapResponse,
   GovernanceQueueItem,
   GovernanceReviewSubmission,
+  GovernanceRerunResponse,
+  GovernanceRerunSubmission,
   EmbeddingMapPoint,
   EmbeddingMapData,
 } from '@/types/api'
@@ -21,12 +23,21 @@ export function getUsageHeatmap(params?: { period_type?: string; periods?: numbe
   return apiGet<UsageHeatmapResponse>('/stats/usage-heatmap', params)
 }
 
-export function getGovernanceQueue(params?: { reason?: string; limit?: number; offset?: number }) {
+export function getGovernanceQueue(params?: {
+  reason?: string
+  stage?: string
+  limit?: number
+  offset?: number
+}) {
   return apiGet<GovernanceQueueItem[]>('/governance/queue', params)
 }
 
 export function submitReview(submission: GovernanceReviewSubmission) {
   return apiPost<{ success: boolean }>('/governance/review', submission)
+}
+
+export function requestRerun(submission: GovernanceRerunSubmission) {
+  return apiPost<GovernanceRerunResponse>('/governance/rerun', submission)
 }
 
 export function getEmbeddingMap() {

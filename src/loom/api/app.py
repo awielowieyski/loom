@@ -44,6 +44,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Loom", version="0.1.0", lifespan=lifespan)
 
     from loom.api.routes.activity import router as activity_router
+    from loom.api.routes.artifacts import router as artifacts_router
     from loom.api.routes.capabilities import router as capabilities_router
     from loom.api.routes.categories import router as categories_router
     from loom.api.routes.embeddings import router as embeddings_router
@@ -66,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(skills_m4_router)
     app.include_router(resolve_router)
     app.include_router(activity_router)
+    app.include_router(artifacts_router)
     app.include_router(embeddings_router)
     app.include_router(stats_router)
     app.include_router(governance_router)

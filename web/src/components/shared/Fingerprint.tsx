@@ -14,7 +14,7 @@ import {
 const SIZE_MAP = {
   thumbnail: 32,
   card: 64,
-  hero: 200,
+  hero: 220,
 } as const
 
 type FingerprintSize = keyof typeof SIZE_MAP
@@ -35,6 +35,8 @@ export function Fingerprint({
   const [hoveredAxis, setHoveredAxis] = useState<AxisName | null>(null)
   const px = SIZE_MAP[size]
   const isHero = size === 'hero'
+  const heroPadding = isHero ? 28 : 0
+  const svgSize = px + heroPadding * 2
 
   const path = buildFingerprintPath(scores, px)
   const gridRings = buildGridRings(px)
@@ -50,9 +52,9 @@ export function Fingerprint({
 
   return (
     <svg
-      width={px}
-      height={px}
-      viewBox={`0 0 ${px} ${px}`}
+      width={svgSize}
+      height={svgSize}
+      viewBox={`${-heroPadding} ${-heroPadding} ${svgSize} ${svgSize}`}
       role="img"
       aria-label={ariaLabel}
       className={cn('shrink-0', className)}

@@ -23,6 +23,30 @@ class TrustTier(StrEnum):
         return self.rank >= floor.rank
 
 
+class LifecycleState(StrEnum):
+    QUARANTINED = "quarantined"
+    CANONICALIZING = "canonicalizing"
+    DEDUPLICATING = "deduplicating"
+    EVALUATING = "evaluating"
+    REVIEW = "review"
+    PUBLISHED = "published"
+    REJECTED = "rejected"
+    DEPRECATED = "deprecated"
+
+
+class CanonicalizationLevel(StrEnum):
+    NONE = "none"
+    MINOR = "minor"
+    SUBSTANTIVE = "substantive"
+    DERIVED = "derived"
+
+
+class AuthorshipStatus(StrEnum):
+    AUTHOR_OWNED = "author_owned"
+    LOOM_AMENDED = "loom_amended"
+    LOOM_DERIVED = "loom_derived"
+
+
 class CostProfile(StrEnum):
     FREE = "free"
     LOW = "low"

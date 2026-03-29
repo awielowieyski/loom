@@ -15,7 +15,7 @@ from loom.db.repositories.skill_repo import SkillRepo  # noqa: TC001 — FastAPI
 
 router = APIRouter(prefix="/api/v1", tags=["timeline"])
 
-_TRUST_RANK = {"experimental": 0, "community": 1, "verified": 2}
+_TRUST_RANK = {"unvetted": -1, "experimental": 0, "community": 1, "verified": 2}
 
 
 class TimelineEvent(BaseModel):
@@ -83,6 +83,8 @@ async def _build_timeline(
     for row in trust_rows:
         prev_rank = _TRUST_RANK.get(row["previous_tier"], 0)
         new_rank = _TRUST_RANK.get(row["new_tier"], 0)
+        if new_rank == prev_rank:
+            continue
         event_type = "promoted" if new_rank > prev_rank else "demoted"
         events.append(
             TimelineEvent(

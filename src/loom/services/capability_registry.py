@@ -97,6 +97,8 @@ class CapabilityRegistryService:
             estimated_duration=_coerce_duration(data.estimated_duration, "slow"),
             extends=data.extends,
             embedding=embedding,
+            lifecycle_state=data.lifecycle_state,
+            provenance_summary=data.provenance_summary,
         )
 
     async def get_capability(self, slug: str, version: str | None = None) -> Capability | None:

@@ -6,9 +6,15 @@ import asyncpg
 import pytest
 
 from loom.db.repositories.category_repo import CategoryRepo
+from loom.db.repositories.service_metadata_repo import ServiceMetadataRepo
 from loom.db.repositories.skill_repo import SkillRepo
 from loom.models.category import CategoryCreate
 from loom.models.common import EvalScenario, EvalSpec
+from loom.models.service_metadata import (
+    PricingFactWrite,
+    ServiceDependencyWrite,
+    ServiceSetupRequirementWrite,
+)
 from loom.models.skill import SkillCreate
 from loom.services.eval import EvalService
 from loom.services.registry import RegistryService
@@ -87,3 +93,77 @@ async def test_list_skills(registry: RegistryService, setup: uuid.UUID) -> None:
 
     skills = await registry.list_skills()
     assert any(s.slug == data.slug for s in skills)
+
+
+async def test_get_skill_includes_external_service_metadata(
+    registry: RegistryService,
+    db_conn: asyncpg.Connection,
+    setup: uuid.UUID,
+) -> None:
+    author_id = setup
+    data = await _make_skill(
+        content=(
+            "Use https://aisa.one/docs for YouTube search.\n"
+            "Pricing: YouTube search costs ~$0.002.\n"
+            "Sign up, add credits, and export AISA_API_KEY=your-key.\n"
+        )
+    )
+    created = await registry.create_skill(data, author_id=author_id)
+    assert created.current_version_id is not None
+
+    service_repo = ServiceMetadataRepo(db_conn)
+    await service_repo.replace_skill_version_metadata(
+        skill_version_id=created.current_version_id,
+        dependencies=[
+            ServiceDependencyWrite(
+                service_key="aisa.one",
+                display_name="AISA",
+                service_type="api",
+                homepage_url="https://aisa.one",
+                docs_url="https://aisa.one/docs",
+                default_auth_methods=["api_key"],
+                default_env_vars=["AISA_API_KEY"],
+                pricing_summary={
+                    "pricing_model": "usage_based",
+                    "requires_paid_account": True,
+                    "indicative_unit_cost_usd": 0.002,
+                },
+                evidence_summary={"source": "test"},
+            )
+        ],
+        pricing_facts=[
+            PricingFactWrite(
+                fact_type="unit_cost",
+                pricing_model="usage_based",
+                operation_name="youtube_search",
+                unit_name="request",
+                unit_cost_usd=0.002,
+                currency="USD",
+                price_text_raw="YouTube search costs ~$0.002",
+                source_uri="https://aisa.one/docs",
+                evidence_snippet="YouTube search costs ~$0.002",
+                confidence=0.8,
+            )
+        ],
+        setup_requirements=[
+            ServiceSetupRequirementWrite(
+                service_key="aisa.one",
+                requirement_type="env_var",
+                key="AISA_API_KEY",
+                value_hint="api_key",
+                instructions="Set AISA_API_KEY before running the skill.",
+                evidence_summary={"source": "test"},
+            )
+        ],
+    )
+
+    fetched = await registry.get_skill(data.slug)
+    assert fetched is not None
+    assert fetched.external_services
+    assert fetched.external_services[0].service.service_key == "aisa.one"
+    assert fetched.pricing
+    assert fetched.pricing[0].unit_cost_usd == 0.002
+    assert fetched.setup_requirements
+    assert fetched.setup_requirements[0].key == "AISA_API_KEY"
+    assert fetched.requires_paid_service is True
+    assert fetched.requires_network is True

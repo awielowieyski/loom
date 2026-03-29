@@ -33,10 +33,19 @@ from pydantic_ai import Agent  # noqa: E402
 from seed import get_embedding  # noqa: E402
 
 from loom.db.repositories.eval_repo import EvalRepo  # noqa: E402
+from loom.db.repositories.service_metadata_repo import ServiceMetadataRepo  # noqa: E402
 from loom.db.repositories.skill_repo import SkillRepo  # noqa: E402
-from loom.models.common import EvalScenario, EvalSpec, TrustTier  # noqa: E402
+from loom.models.common import (  # noqa: E402
+    AuthorshipStatus,
+    CanonicalizationLevel,
+    EvalScenario,
+    EvalSpec,
+    LifecycleState,
+    TrustTier,
+)
 from loom.providers.llm import create_llm_model  # noqa: E402
 from loom.services.eval_runner import run_evaluation  # noqa: E402
+from loom.services.service_metadata_extractor import extract_service_metadata  # noqa: E402
 from loom.settings import LoomSettings  # noqa: E402
 
 if TYPE_CHECKING:
@@ -136,14 +145,14 @@ async def find_similar_skills(
         rows = await conn.fetch(
             """
             SELECT name, description FROM skills
-            WHERE trust_tier != 'unvetted'
+            WHERE lifecycle_state = 'published'
               AND embedding IS NOT NULL
               AND id != $1
             ORDER BY embedding <=> $2::vector
             LIMIT $3
             """,
             exclude_id,
-            str(embedding),
+            embedding,
             limit,
         )
     return [f"{r['name']}: {r['description']}" for r in rows]
@@ -155,6 +164,7 @@ async def vet_skill(
     skill_slug: str,
     skill_content: str,
     skill_embedding: list[float] | None,
+    source_uri: str | None,
     rewrite_agent: Agent[None, str],
     settings: LoomSettings,
     *,
@@ -225,23 +235,36 @@ async def vet_skill(
 
     async with pool.acquire() as conn:
         skill_repo = SkillRepo(conn)
-        eval_repo = EvalRepo(conn)
         await skill_repo.update_metadata(
             skill_id,
             name=new_name,
             description=new_desc,
             tags=new_tags,
             embedding=new_embedding,
+            embedding_text=embedding_text,
             eval_spec=eval_spec,
+            lifecycle_state=LifecycleState.EVALUATING,
+            canonicalization_level=CanonicalizationLevel.SUBSTANTIVE,
+            authorship_status=AuthorshipStatus.LOOM_AMENDED,
+            change_type="loom_canonicalize",
+            change_agent="loom/canonicalizer",
+            change_rationale="Metadata canonicalized before publication",
         )
-        # Promote from unvetted → experimental (now has metadata + eval spec)
-        await skill_repo.update_trust_tier(skill_id, TrustTier.EXPERIMENTAL)
-        await eval_repo.create_trust_audit_entry(
-            skill_id=skill_id,
-            previous_tier="unvetted",
-            new_tier="experimental",
-            reason="Vet pipeline: meta rewrite complete",
+        version_id = await conn.fetchval(
+            "SELECT current_version_id FROM skills WHERE id = $1", skill_id
         )
+        if version_id is not None:
+            service_repo = ServiceMetadataRepo(conn)
+            dependencies, pricing_facts, setup_requirements = extract_service_metadata(
+                skill_content=skill_content,
+                source_uri=source_uri,
+            )
+            await service_repo.replace_skill_version_metadata(
+                skill_version_id=version_id,
+                dependencies=dependencies,
+                pricing_facts=pricing_facts,
+                setup_requirements=setup_requirements,
+            )
 
     # Step 5: Run full eval pipeline
     print(f"  [{skill_slug}] Running evaluation pipeline...")
@@ -251,30 +274,36 @@ async def vet_skill(
         score = eval_result.get("composite_score", 0)
         print(f"    Score: {score:.2f}, Passed: {passed}")
 
-        # If eval passes, promote to community
+        # If eval passes, publish as experimental
         if passed:
             async with pool.acquire() as conn:
                 skill_repo = SkillRepo(conn)
                 eval_repo = EvalRepo(conn)
-                await skill_repo.update_trust_tier(skill_id, TrustTier.COMMUNITY)
+                await skill_repo.update_metadata(
+                    skill_id,
+                    lifecycle_state=LifecycleState.PUBLISHED,
+                    change_type="loom_publish",
+                    change_agent="loom/publisher",
+                    change_rationale="Initial published canonical release",
+                )
+                await skill_repo.update_trust_tier(skill_id, TrustTier.EXPERIMENTAL)
                 await eval_repo.create_trust_audit_entry(
                     skill_id=skill_id,
-                    previous_tier="experimental",
-                    new_tier="community",
-                    reason="Vet pipeline: eval passed",
+                    previous_tier="unvetted",
+                    new_tier="experimental",
+                    reason="Vet pipeline: canonical release published",
                 )
             result["status"] = "promoted"
         else:
-            # Failed eval — demote back to unvetted so it's not searchable
+            # Failed eval — mark rejected and keep it hidden
             async with pool.acquire() as conn:
                 skill_repo = SkillRepo(conn)
-                eval_repo = EvalRepo(conn)
-                await skill_repo.update_trust_tier(skill_id, TrustTier.UNVETTED)
-                await eval_repo.create_trust_audit_entry(
-                    skill_id=skill_id,
-                    previous_tier="experimental",
-                    new_tier="unvetted",
-                    reason="Vet pipeline: eval score too low",
+                await skill_repo.update_metadata(
+                    skill_id,
+                    lifecycle_state=LifecycleState.REJECTED,
+                    change_type="loom_reject",
+                    change_agent="loom/publisher",
+                    change_rationale="Canonical draft failed evaluation",
                 )
             result["status"] = "evaluated_low_score"
 
@@ -289,17 +318,16 @@ async def vet_skill(
     except Exception as exc:  # noqa: BLE001
         import traceback
 
-        # Eval failed — demote back to unvetted so it's not searchable
+        # Eval failed — mark rejected and keep it hidden
         try:
             async with pool.acquire() as conn:
                 skill_repo = SkillRepo(conn)
-                eval_repo = EvalRepo(conn)
-                await skill_repo.update_trust_tier(skill_id, TrustTier.UNVETTED)
-                await eval_repo.create_trust_audit_entry(
-                    skill_id=skill_id,
-                    previous_tier="experimental",
-                    new_tier="unvetted",
-                    reason=f"Vet pipeline: eval exception — {exc}",
+                await skill_repo.update_metadata(
+                    skill_id,
+                    lifecycle_state=LifecycleState.REJECTED,
+                    change_type="loom_reject",
+                    change_agent="loom/publisher",
+                    change_rationale=f"Canonical draft evaluation exception: {exc}",
                 )
         except Exception:  # noqa: BLE001
             logger.warning("Failed to demote skill %s after eval error", skill_id)
@@ -329,7 +357,7 @@ async def main() -> None:
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, slug, content, embedding
+            SELECT id, slug, content, embedding, source_uri
             FROM skills
             WHERE trust_tier = 'unvetted'
             ORDER BY created_at ASC
@@ -374,6 +402,7 @@ async def main() -> None:
             skill_slug=skill_slug,
             skill_content=skill_content,
             skill_embedding=skill_embedding,
+            source_uri=row["source_uri"],
             rewrite_agent=rewrite_agent,
             settings=settings,
             dry_run=args.dry_run,

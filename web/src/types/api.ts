@@ -1,6 +1,17 @@
 // ---- Enums ----
 
-export type TrustTier = 'experimental' | 'community' | 'verified'
+export type TrustTier = 'unvetted' | 'experimental' | 'community' | 'verified'
+export type LifecycleState =
+  | 'quarantined'
+  | 'canonicalizing'
+  | 'deduplicating'
+  | 'evaluating'
+  | 'review'
+  | 'published'
+  | 'rejected'
+  | 'deprecated'
+export type CanonicalizationLevel = 'none' | 'minor' | 'substantive' | 'derived'
+export type AuthorshipStatus = 'author_owned' | 'loom_amended' | 'loom_derived'
 export type CostProfile = 'free' | 'low' | 'moderate' | 'high'
 export type EstimatedDuration = 'fast' | 'moderate' | 'slow'
 export type Scope = 'community' | 'corporate'
@@ -52,6 +63,70 @@ export interface DependencyDeclaration {
   trust_requirements: TrustRequirements
 }
 
+export interface ExternalService {
+  id: string
+  service_key: string
+  display_name: string
+  vendor_name: string | null
+  service_type: string
+  homepage_url: string | null
+  docs_url: string | null
+  pricing_url: string | null
+  default_auth_methods: string[]
+  default_env_vars: string[]
+  metadata: Record<string, unknown>
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface SkillExternalService {
+  id: string
+  skill_version_id: string
+  service_id: string
+  required: boolean
+  dependency_role: string
+  operations: string[]
+  pricing_summary: Record<string, unknown>
+  evidence_summary: Record<string, unknown>
+  created_at: string | null
+  service: ExternalService
+}
+
+export interface ServiceSetupRequirement {
+  id: string
+  skill_version_id: string
+  service_id: string
+  requirement_type: string
+  key: string | null
+  value_hint: string | null
+  required: boolean
+  instructions: string | null
+  evidence_summary: Record<string, unknown>
+  created_at: string | null
+}
+
+export interface PricingFact {
+  id: string
+  subject_kind: string
+  subject_id: string
+  fact_type: string
+  pricing_model: string
+  operation_name: string | null
+  unit_name: string | null
+  unit_cost_usd: number | null
+  currency: string | null
+  price_text_raw: string | null
+  price_structured: Record<string, unknown>
+  source_kind: string
+  source_artifact_id: string | null
+  source_uri: string | null
+  evidence_snippet: string | null
+  confidence: number | null
+  observed_at: string | null
+  superseded_by: string | null
+  created_at: string | null
+}
+
 export interface EvalScenario {
   description: string
   input_context: string
@@ -83,6 +158,7 @@ export interface Skill {
   version: string
   author_id: string
   trust_tier: TrustTier
+  lifecycle_state: LifecycleState
   cost_profile: CostProfile
   cost_drivers: string[]
   estimated_duration: string
@@ -90,6 +166,24 @@ export interface Skill {
   eval_spec: EvalSpec
   signature: string | null
   extends: string | null
+  current_version_id: string | null
+  published_version_id: string | null
+  provenance_summary: Record<string, unknown> | null
+  display_name: string | null
+  embedding_text: string | null
+  canonical_hash: string | null
+  execution_bundle_hash: string | null
+  canonicalization_level: CanonicalizationLevel | null
+  authorship_status: AuthorshipStatus | null
+  change_type: string | null
+  change_agent: string | null
+  change_rationale: string | null
+  diff_summary: Record<string, unknown> | null
+  external_services: SkillExternalService[]
+  pricing: PricingFact[]
+  setup_requirements: ServiceSetupRequirement[]
+  requires_paid_service: boolean
+  requires_network: boolean
   eval_status: string | null
   composite_score: number | null
   latest_eval_job_id: string | null
@@ -145,6 +239,7 @@ export interface Capability {
   version: string
   author_id: string
   trust_tier: TrustTier
+  lifecycle_state: LifecycleState
   steps: CapabilityStep[]
   preconditions: string[]
   expected_outcome: string
@@ -155,6 +250,19 @@ export interface Capability {
   estimated_duration: string
   eval_spec: EvalSpec
   extends: string | null
+  current_version_id: string | null
+  published_version_id: string | null
+  provenance_summary: Record<string, unknown> | null
+  display_name: string | null
+  embedding_text: string | null
+  capability_root_hash: string | null
+  execution_bundle_hash: string | null
+  canonicalization_level: CanonicalizationLevel | null
+  authorship_status: AuthorshipStatus | null
+  change_type: string | null
+  change_agent: string | null
+  change_rationale: string | null
+  diff_summary: Record<string, unknown> | null
   eval_status: string | null
   composite_score: number | null
   created_at: string | null
@@ -407,19 +515,36 @@ export interface UsageHeatmapResponse {
 }
 
 export type GovernanceReason = 'injection_flag' | 'low_confidence' | 'recent_amendment'
+export type GovernanceStage =
+  | 'quarantine'
+  | 'canonicalization'
+  | 'dedup'
+  | 'evaluation'
+  | 'publication'
+
+export type RerunMode = 'canonicalize' | 'evaluate' | 'full_pipeline'
 
 export interface GovernanceQueueItem {
   id: string
   skill_id: string
   slug: string
   name: string
+  stage: GovernanceStage
   reason: GovernanceReason
   submitted_at: string | null
+  lifecycle_state: LifecycleState
+  trust_tier: TrustTier
+  authorship_status: AuthorshipStatus | null
+  canonicalization_level: CanonicalizationLevel | null
+  provenance_summary: Record<string, unknown> | null
+  current_version_id: string | null
+  published_version_id: string | null
   eval_summary: {
     composite_score?: number | null
     dimension_scores?: Record<string, number> | null
     injection_flagged?: boolean
     changelog?: string | null
+    eval_status?: string | null
   }
 }
 
@@ -427,6 +552,33 @@ export interface GovernanceReviewSubmission {
   queue_item_id: string
   decision: 'approve' | 'reject' | 'request_changes'
   note: string
+}
+
+export interface PipelineRunRequest {
+  id: string
+  skill_id: string | null
+  artifact_id: string | null
+  request_mode: RerunMode
+  status: string
+  requested_via: string
+  note: string | null
+  result_summary: Record<string, unknown>
+  created_at: string | null
+  started_at: string | null
+  completed_at: string | null
+}
+
+export interface GovernanceRerunSubmission {
+  skill_id: string
+  request_mode: RerunMode
+  note: string
+}
+
+export interface GovernanceRerunResponse {
+  success: boolean
+  message?: string
+  error?: string
+  request?: PipelineRunRequest | null
 }
 
 export interface EmbeddingMapPoint {

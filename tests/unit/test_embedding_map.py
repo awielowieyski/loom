@@ -150,6 +150,19 @@ async def test_null_scores():
     assert result["skills"][0]["behavioral_score"] is None
 
 
+@pytest.mark.asyncio
+async def test_queries_only_include_published_rows():
+    conn = _make_conn_mock([], [])
+    svc = EmbeddingMapService()
+
+    await svc.compute_map(conn)
+
+    assert conn.fetch.await_count == 2
+    for call in conn.fetch.await_args_list:
+        sql = call.args[0]
+        assert "lifecycle_state = 'published'" in sql
+
+
 def test_random_layout_shape():
     """Random layout returns correct shape."""
     coords = _random_layout(7)

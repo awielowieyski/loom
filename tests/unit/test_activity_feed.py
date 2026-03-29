@@ -193,6 +193,17 @@ async def test_feed_passes_since_parameter(mock_conn: MagicMock) -> None:
         assert ">" in args[0] or "WHERE" in args[0]
 
 
+async def test_feed_queries_only_published_rows(mock_conn: MagicMock) -> None:
+    """Public feed excludes non-published drafts."""
+    service = ActivityFeedService(mock_conn)
+    await service.get_feed()
+
+    assert mock_conn.fetch.call_count == 4
+    for call in mock_conn.fetch.call_args_list:
+        sql = call[0][0]
+        assert "lifecycle_state = 'published'" in sql
+
+
 def test_trust_rank_values() -> None:
     """Trust rank helper returns correct ordering."""
     assert _trust_rank("experimental") == 0

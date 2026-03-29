@@ -1,4 +1,5 @@
 const BASE_URL = '/api/v1'
+const DEFAULT_API_KEY = 'loom-web-ui'
 
 export class ApiError extends Error {
   status: number
@@ -36,6 +37,17 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>
 }
 
+function buildHeaders(extra?: HeadersInit): Headers {
+  const headers = new Headers(extra)
+  const apiKey =
+    typeof window !== 'undefined'
+      ? window.localStorage.getItem('loom_api_key')?.trim() || DEFAULT_API_KEY
+      : DEFAULT_API_KEY
+
+  headers.set('X-API-Key', apiKey)
+  return headers
+}
+
 export async function apiGet<T>(path: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
   const url = new URL(`${BASE_URL}${path}`, window.location.origin)
   if (params) {
@@ -46,7 +58,7 @@ export async function apiGet<T>(path: string, params?: Record<string, string | n
     }
   }
   const res = await fetch(url.toString(), {
-    headers: { Accept: 'application/json' },
+    headers: buildHeaders({ Accept: 'application/json' }),
   })
   return handleResponse<T>(res)
 }
@@ -54,10 +66,10 @@ export async function apiGet<T>(path: string, params?: Record<string, string | n
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
-    headers: {
+    headers: buildHeaders({
       'Content-Type': 'application/json',
       Accept: 'application/json',
-    },
+    }),
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   return handleResponse<T>(res)
@@ -66,10 +78,10 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
 export async function apiPut<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'PUT',
-    headers: {
+    headers: buildHeaders({
       'Content-Type': 'application/json',
       Accept: 'application/json',
-    },
+    }),
     body: JSON.stringify(body),
   })
   return handleResponse<T>(res)
