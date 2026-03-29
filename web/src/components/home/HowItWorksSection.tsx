@@ -1,20 +1,20 @@
-import { ArrowRight, PackagePlus, ShieldCheck, Route, Play } from 'lucide-react'
+import { ArrowRight, Files, ShieldCheck, Route, Play } from 'lucide-react'
 
 const steps = [
   {
-    icon: PackagePlus,
-    label: 'Register',
-    description: 'Skills and capabilities are added from community, enterprise, or local sources.',
+    icon: Files,
+    label: 'Describe the task',
+    description: 'The runtime sends task intent plus context like tools, policy, trust floor, and budget.',
   },
   {
     icon: ShieldCheck,
-    label: 'Evaluate',
-    description: 'Loom assesses quality, trust, dependencies, and cost signals, and keeps them current over time.',
+    label: 'Evaluate constraints',
+    description: 'Loom checks candidate skills and capabilities against quality, dependency, trust, and cost signals.',
   },
   {
     icon: Route,
     label: 'Resolve',
-    description: 'Given a task and runtime context, Loom selects the right skill or composed capability, ranks alternatives, and explains the choice.',
+    description: 'It returns the best viable path, ranked alternatives, rejection reasons, and the rationale for the choice.',
   },
   {
     icon: Play,
@@ -25,38 +25,82 @@ const steps = [
 
 const differentiators = [
   {
-    title: 'Evaluated',
-    description: 'Loom does not just index skills. It evaluates them and keeps reassessing as evidence changes.',
+    title: 'Better than search',
+    description: 'Loom is not just matching words. It is choosing a path that can actually work in the current runtime.',
   },
   {
-    title: 'Controlled',
-    description: 'Policy, trust, dependency, and budget constraints are applied at resolution time.',
+    title: 'Safer by default',
+    description: 'Dependency gaps, trust warnings, and policy conflicts are surfaced before the agent starts executing.',
   },
   {
-    title: 'Updated',
-    description: 'A living registry, not a static folder. Better paths rise, stale ones fall, and resolution reflects the current best-known option.',
+    title: 'Clearer tradeoffs',
+    description: 'The runtime can see why one option won and what it gives up by choosing a cheaper or lighter fallback.',
   },
   {
-    title: 'Extended',
-    description: 'Shared task knowledge can be layered without forks. Community skills define the base, enterprises add governance, individuals add preferences.',
+    title: 'Portable knowledge',
+    description: 'Shared capabilities stay reusable while enterprises and individuals layer on local governance and preferences.',
   },
 ] as const
 
 export function HowItWorksSection() {
   return (
-    <section className="py-16 border-t">
-      <div className="max-w-3xl mx-auto space-y-12">
-        <div className="text-center space-y-2">
+    <section className="border-t py-18 md:py-22">
+      <div className="max-w-3xl mx-auto space-y-12 md:space-y-14">
+        <div className="text-center space-y-3">
           <h2 className="text-xl md:text-2xl font-semibold tracking-tight">
-            How Loom works
+            What Loom actually does
           </h2>
           <p className="text-sm text-muted-foreground">
-            Externalised task knowledge, turned into governed runtime choice.
+            It turns externalised task knowledge into constrained runtime choice.
           </p>
         </div>
 
-        {/* Pipeline */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="rounded-3xl border border-border/70 bg-gradient-to-br from-accent/50 via-background to-chart-2/8 p-5 md:p-6">
+          <div className="grid gap-4 md:grid-cols-[1.1fr_auto_1.2fr_auto_1.2fr] md:items-center">
+            <div className="rounded-2xl border border-border/60 bg-background/90 p-4">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
+                Input
+              </p>
+              <p className="mt-2 text-sm font-medium text-foreground">
+                “Produce a vendor-risk briefing”
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Web search</span>
+                <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Internal docs</span>
+                <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Moderate budget</span>
+                <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Community trust floor</span>
+              </div>
+            </div>
+
+            <ArrowRight className="hidden md:block h-4 w-4 text-muted-foreground/40" />
+
+            <div className="rounded-2xl border border-primary/15 bg-primary/5 p-4">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary/70">
+                Resolution
+              </p>
+              <ul className="mt-2 space-y-2 text-sm text-foreground/80">
+                <li>Checks dependencies and trust boundaries</li>
+                <li>Ranks viable capabilities</li>
+                <li>Rejects paths that do not fit the runtime</li>
+              </ul>
+            </div>
+
+            <ArrowRight className="hidden md:block h-4 w-4 text-muted-foreground/40" />
+
+            <div className="rounded-2xl border border-chart-2/20 bg-background/95 p-4">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
+                Output
+              </p>
+              <ul className="mt-2 space-y-2 text-sm text-foreground/80">
+                <li>Selected capability and rationale</li>
+                <li>Alternatives and fallbacks</li>
+                <li>Resolved plan the agent can execute</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           {steps.map((step, i) => (
             <div key={step.label} className="relative flex flex-col items-center text-center">
               <div className="flex items-center gap-2 md:flex-col md:gap-3 w-full md:w-auto">
@@ -78,7 +122,7 @@ export function HowItWorksSection() {
         </div>
 
         {/* Differentiators */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {differentiators.map((d) => (
             <div
               key={d.title}

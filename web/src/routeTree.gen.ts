@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WhitepaperRouteImport } from './routes/whitepaper'
 import { Route as GovernRouteImport } from './routes/govern'
 import { Route as ExploreRouteImport } from './routes/explore'
 import { Route as DevRouteImport } from './routes/dev'
@@ -16,6 +17,11 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SkillsSlugRouteImport } from './routes/skills.$slug'
 import { Route as CapabilitiesSlugRouteImport } from './routes/capabilities.$slug'
 
+const WhitepaperRoute = WhitepaperRouteImport.update({
+  id: '/whitepaper',
+  path: '/whitepaper',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GovernRoute = GovernRouteImport.update({
   id: '/govern',
   path: '/govern',
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/dev': typeof DevRoute
   '/explore': typeof ExploreRoute
   '/govern': typeof GovernRoute
+  '/whitepaper': typeof WhitepaperRoute
   '/capabilities/$slug': typeof CapabilitiesSlugRoute
   '/skills/$slug': typeof SkillsSlugRoute
 }
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/dev': typeof DevRoute
   '/explore': typeof ExploreRoute
   '/govern': typeof GovernRoute
+  '/whitepaper': typeof WhitepaperRoute
   '/capabilities/$slug': typeof CapabilitiesSlugRoute
   '/skills/$slug': typeof SkillsSlugRoute
 }
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/dev': typeof DevRoute
   '/explore': typeof ExploreRoute
   '/govern': typeof GovernRoute
+  '/whitepaper': typeof WhitepaperRoute
   '/capabilities/$slug': typeof CapabilitiesSlugRoute
   '/skills/$slug': typeof SkillsSlugRoute
 }
@@ -79,6 +88,7 @@ export interface FileRouteTypes {
     | '/dev'
     | '/explore'
     | '/govern'
+    | '/whitepaper'
     | '/capabilities/$slug'
     | '/skills/$slug'
   fileRoutesByTo: FileRoutesByTo
@@ -87,6 +97,7 @@ export interface FileRouteTypes {
     | '/dev'
     | '/explore'
     | '/govern'
+    | '/whitepaper'
     | '/capabilities/$slug'
     | '/skills/$slug'
   id:
@@ -95,6 +106,7 @@ export interface FileRouteTypes {
     | '/dev'
     | '/explore'
     | '/govern'
+    | '/whitepaper'
     | '/capabilities/$slug'
     | '/skills/$slug'
   fileRoutesById: FileRoutesById
@@ -104,12 +116,20 @@ export interface RootRouteChildren {
   DevRoute: typeof DevRoute
   ExploreRoute: typeof ExploreRoute
   GovernRoute: typeof GovernRoute
+  WhitepaperRoute: typeof WhitepaperRoute
   CapabilitiesSlugRoute: typeof CapabilitiesSlugRoute
   SkillsSlugRoute: typeof SkillsSlugRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/whitepaper': {
+      id: '/whitepaper'
+      path: '/whitepaper'
+      fullPath: '/whitepaper'
+      preLoaderRoute: typeof WhitepaperRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/govern': {
       id: '/govern'
       path: '/govern'
@@ -160,6 +180,7 @@ const rootRouteChildren: RootRouteChildren = {
   DevRoute: DevRoute,
   ExploreRoute: ExploreRoute,
   GovernRoute: GovernRoute,
+  WhitepaperRoute: WhitepaperRoute,
   CapabilitiesSlugRoute: CapabilitiesSlugRoute,
   SkillsSlugRoute: SkillsSlugRoute,
 }

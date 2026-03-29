@@ -2,27 +2,53 @@ import { CheckCircle2, AlertTriangle, Layers, Plus } from 'lucide-react'
 
 export function ExampleSection() {
   return (
-    <section className="py-16 border-t">
-      <div className="max-w-2xl mx-auto space-y-6">
+    <section className="border-t py-18 md:py-22">
+      <div className="max-w-2xl mx-auto space-y-8 md:space-y-10">
         <h2 className="text-xl md:text-2xl font-semibold tracking-tight">
           Example: vendor risk
         </h2>
 
         <div className="space-y-4 text-sm md:text-base text-muted-foreground leading-relaxed">
           <p>
-            An agent is asked to produce a vendor-risk briefing.
-            It has access to internal ticketing, a document repository, web search, and Slack.
-            It does not have access to a premium financial-data API.
-            The enterprise has set a trust floor and a moderate cost budget.
+            An agent is asked to produce a vendor-risk briefing. It has internal ticketing,
+            a document repository, web search, and Slack, but no premium financial-data API.
+            The enterprise has a trust floor and a moderate cost budget.
           </p>
           <p>
-            Loom resolves a community capability for vendor-risk briefings.
-            Then extends it.
+            Without Loom, a strong model might improvise something plausible. With Loom, the
+            runtime gets a capability that matches the task shape, fits the environment,
+            and degrades gracefully when a dependency is missing.
           </p>
         </div>
 
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-border/70 bg-card p-4">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
+              Runtime context
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Internal ticketing</span>
+              <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Document repository</span>
+              <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Web search</span>
+              <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Slack</span>
+              <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Moderate budget</span>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-primary/15 bg-primary/5 p-4">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary/70">
+              Resolution outcome
+            </p>
+            <div className="mt-3 space-y-2 text-sm text-foreground/80">
+              <p>Choose `vendor-risk-briefing`</p>
+              <p>Skip optional financial-data step</p>
+              <p>Surface trust warning for external claims</p>
+            </div>
+          </div>
+        </div>
+
         {/* Resolution trace — extends in action */}
-        <div className="space-y-2">
+        <div className="space-y-3">
           {/* Community base */}
           <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-accent/50 border border-border/50">
             <CheckCircle2 className="h-4 w-4 text-success shrink-0 mt-0.5" />
@@ -87,8 +113,8 @@ export function ExampleSection() {
 
         <div className="text-sm md:text-base text-muted-foreground leading-relaxed">
           <p>
-            The result is not just a match. It is three layers merged into
-            a single, inspectable execution plan.
+            The result is not just a match. It is a concrete execution plan, plus the
+            governance and preferences layered on top of it.
           </p>
         </div>
 
@@ -102,7 +128,7 @@ export function ExampleSection() {
               'The merged capability: community base + corporate governance + personal preferences',
               'Dependency status for every step, including skipped optional steps',
               'Trust warnings where external data enters the flow',
-              'The full extends chain, so the decision is auditable',
+              'Alternatives and tradeoffs if the preferred route is unavailable',
               'A fully resolved execution plan — no further calls to Loom required',
             ].map((item) => (
               <li key={item} className="flex items-start gap-2 text-sm text-foreground/80">
@@ -119,7 +145,7 @@ export function ExampleSection() {
           <p className="text-xs text-muted-foreground leading-relaxed">
             When the community skill improves — better search strategy, updated synthesis
             instructions — the corporate and personal layers inherit the improvement
-            automatically. No fork. No manual merge.
+            automatically. No fork divergence. No manual merge treadmill.
           </p>
         </div>
       </div>
