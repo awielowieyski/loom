@@ -68,7 +68,7 @@ export function ComparisonStrip() {
           <p className="text-xs text-center text-muted-foreground/70">
             Loom is not a prompt library or a workflow engine.
             <br className="hidden sm:block" />
-            {' '}It is the decision layer that helps an agent choose the right capability under real constraints.
+            {' '}It is the decision layer that helps an agent choose the right skill or workflow under real constraints.
           </p>
         </div>
 
@@ -76,10 +76,10 @@ export function ComparisonStrip() {
         <div className="space-y-7">
           <div className="text-center space-y-3">
             <h2 className="text-xl md:text-2xl font-semibold tracking-tight">
-              Layered knowledge, not endless forks
+              Company context without forking
             </h2>
             <p className="text-sm text-muted-foreground max-w-xl mx-auto">
-              Shared task knowledge improves over time. Loom&apos;s extends mechanism lets
+              Shared workflows improve over time. Loom&apos;s extends mechanism lets
               teams add governance and local preferences without forking the base capability.
             </p>
           </div>

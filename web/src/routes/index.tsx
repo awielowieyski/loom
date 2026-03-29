@@ -145,7 +145,7 @@ function ResolveView() {
   return (
     <div className="max-w-3xl mx-auto pb-8 md:pb-12">
       {/* Hero with search */}
-      <HeroContent>
+      <HeroContent isSearchActive={isSearchActive}>
         <div className="max-w-2xl mx-auto w-full pt-3 md:pt-4">
           <HeroSearchBar
             onSearch={handleSearch}

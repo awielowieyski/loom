@@ -5,18 +5,19 @@ export function ExampleSection() {
     <section className="border-t py-18 md:py-22">
       <div className="max-w-2xl mx-auto space-y-8 md:space-y-10">
         <h2 className="text-xl md:text-2xl font-semibold tracking-tight">
-          Example: vendor risk
+          Example: account brief
         </h2>
 
         <div className="space-y-4 text-sm md:text-base text-muted-foreground leading-relaxed">
           <p>
-            An agent is asked to produce a vendor-risk briefing. It has internal ticketing,
-            a document repository, web search, and Slack, but no premium financial-data API.
-            The enterprise has a trust floor and a moderate cost budget.
+            An agent is asked to prepare an account brief before a customer call. It has
+            CRM access through an MCP server, internal docs, support history, web search,
+            and Slack. The company wants the brief grounded in internal context, but does
+            not want CRM notes sent to external services.
           </p>
           <p>
             Without Loom, a strong model might improvise something plausible. With Loom, the
-            runtime gets a capability that matches the task shape, fits the environment,
+            runtime gets a workflow that matches the task shape, fits the environment,
             and degrades gracefully when a dependency is missing.
           </p>
         </div>
@@ -27,11 +28,12 @@ export function ExampleSection() {
               Runtime context
             </p>
             <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Internal ticketing</span>
-              <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Document repository</span>
+              <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">CRM MCP</span>
+              <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Support history</span>
+              <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Internal docs</span>
               <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Web search</span>
               <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Slack</span>
-              <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Moderate budget</span>
+              <span className="rounded-full border border-border/70 bg-accent/60 px-2 py-1">Internal-only CRM notes</span>
             </div>
           </div>
 
@@ -40,9 +42,9 @@ export function ExampleSection() {
               Resolution outcome
             </p>
             <div className="mt-3 space-y-2 text-sm text-foreground/80">
-              <p>Choose `vendor-risk-briefing`</p>
-              <p>Skip optional financial-data step</p>
-              <p>Surface trust warning for external claims</p>
+              <p>Choose the `account-brief-prep` workflow</p>
+              <p>Use CRM, support, docs, and public web context together</p>
+              <p>Keep internal notes out of the external research step</p>
             </div>
           </div>
         </div>
@@ -54,14 +56,14 @@ export function ExampleSection() {
             <CheckCircle2 className="h-4 w-4 text-success shrink-0 mt-0.5" />
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-sm font-medium text-foreground">vendor-risk-briefing</p>
+                <p className="text-sm font-medium text-foreground">account-brief-prep</p>
                 <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-accent border border-border/50 text-muted-foreground">
                   community
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Resolved — web search, data retrieval, risk synthesis.
-                Financial data step skipped (API unavailable, marked optional).
+                Resolved — gather public company context, recent news, and the standard
+                customer-facing brief structure from a vetted community workflow.
               </p>
             </div>
           </div>
@@ -71,15 +73,15 @@ export function ExampleSection() {
             <Plus className="h-4 w-4 text-primary/70 shrink-0 mt-0.5" />
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-sm font-medium text-foreground">acme-vendor-assessment</p>
+                <p className="text-sm font-medium text-foreground">acme-account-context</p>
                 <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-primary/10 border border-primary/15 text-primary">
                   corporate
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Extends community skill — cross-references approved vendor list,
-                applies GDPR compliance section, queries internal incident database,
-                enforces risk-score threshold.
+                Extends the community workflow with CRM access, support history,
+                approved brief structure, and a guardrail that keeps internal notes
+                out of external enrichment.
               </p>
             </div>
           </div>
@@ -89,14 +91,14 @@ export function ExampleSection() {
             <Plus className="h-4 w-4 text-chart-2/70 shrink-0 mt-0.5" />
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-sm font-medium text-foreground">my-vendor-workflow</p>
+                <p className="text-sm font-medium text-foreground">my-sales-handoff</p>
                 <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-chart-2/10 border border-chart-2/15 text-chart-2">
                   personal
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Extends corporate skill — posts briefing to #procurement-review on Slack,
-                creates a Jira ticket in the VENDOR project.
+                Extends the company workflow with personal preferences — post the
+                brief to the deal room in Slack and create a follow-up note for the AE.
               </p>
             </div>
           </div>
@@ -106,14 +108,14 @@ export function ExampleSection() {
         <div className="flex items-start gap-2 px-4 py-2.5 rounded-lg bg-warning/5 border border-warning/20">
           <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
           <p className="text-xs text-muted-foreground">
-            Trust warning surfaced: data flows from web search (external)
-            into risk synthesis. Output may contain unverified external claims.
+            Guardrail surfaced: CRM notes stay internal. Only the company name,
+            public facts, and approved fields flow into the external research step.
           </p>
         </div>
 
         <div className="text-sm md:text-base text-muted-foreground leading-relaxed">
           <p>
-            The result is not just a match. It is a concrete execution plan, plus the
+            The result is not just a match. It is a concrete workflow plan, plus the
             governance and preferences layered on top of it.
           </p>
         </div>
@@ -125,9 +127,10 @@ export function ExampleSection() {
           </p>
           <ul className="space-y-1.5">
             {[
-              'The merged capability: community base + corporate governance + personal preferences',
-              'Dependency status for every step, including skipped optional steps',
-              'Trust warnings where external data enters the flow',
+              'The merged workflow layers: community base + corporate governance + personal preferences',
+              'A reusable workflow made from vetted community logic plus company-specific MCP context',
+              'Dependency status for every step, including CRM and support-system inputs',
+              'Data-flow guardrails that keep internal notes out of external steps',
               'Alternatives and tradeoffs if the preferred route is unavailable',
               'A fully resolved execution plan — no further calls to Loom required',
             ].map((item) => (
@@ -143,9 +146,9 @@ export function ExampleSection() {
         <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-accent/30">
           <Layers className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
           <p className="text-xs text-muted-foreground leading-relaxed">
-            When the community skill improves — better search strategy, updated synthesis
-            instructions — the corporate and personal layers inherit the improvement
-            automatically. No fork divergence. No manual merge treadmill.
+            When the community workflow improves — better brief structure, stronger
+            research steps, clearer output guidance — the company and personal layers
+            inherit the improvement automatically. No fork divergence. No manual merge treadmill.
           </p>
         </div>
       </div>

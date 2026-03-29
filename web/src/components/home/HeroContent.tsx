@@ -3,6 +3,7 @@ import { CheckCircle2, ShieldCheck, GitCompareArrows, Zap } from 'lucide-react'
 
 interface HeroContentProps {
   children: ReactNode
+  isSearchActive?: boolean
 }
 
 const outcomes = [
@@ -24,12 +25,35 @@ const outcomes = [
   },
 ] as const
 
-export function HeroContent({ children }: HeroContentProps) {
+export function HeroContent({ children, isSearchActive = false }: HeroContentProps) {
+  if (isSearchActive) {
+    return (
+      <div className="space-y-5 pt-10 pb-2 md:space-y-6 md:pt-12">
+        <div className="text-center space-y-3">
+          <p className="text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground/70">
+            Resolve with Loom
+          </p>
+          <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-foreground">
+            Choose the right skill or workflow
+          </h1>
+          <p className="text-sm md:text-base text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+            Search the registry, then resolve the best path for this runtime using tool,
+            trust, policy, and budget context.
+          </p>
+        </div>
+
+        <div className="max-w-2xl mx-auto w-full">
+          {children}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-10 pt-12 pb-6 md:space-y-12 md:pt-16 md:pb-8">
       <div className="text-center space-y-5">
         <p className="text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground/70">
-          From tool access to capability choice
+          Trusted decision layer for enterprise agents
         </p>
         <h1 className="text-4xl md:text-5xl font-semibold tracking-tight text-foreground leading-tight">
           Help agents choose
@@ -37,9 +61,13 @@ export function HeroContent({ children }: HeroContentProps) {
           the right path.
         </h1>
         <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-          Loom helps agents choose the right skill or multi-step capability for a task,
-          in the environment they are actually running in, with the tools, policies,
-          trust boundaries, and budget they have right now.
+          Loom helps agents choose the right skill or workflow for the environment
+          they are actually running in, with the tools, policies, trust boundaries,
+          and budget they have right now.
+        </p>
+        <p className="text-sm text-muted-foreground/85 max-w-xl mx-auto leading-relaxed">
+          Start from vetted community workflows, layer in company-specific MCP tools and
+          policy, and return a path the runtime can actually use.
         </p>
       </div>
 
@@ -74,9 +102,24 @@ export function HeroContent({ children }: HeroContentProps) {
               </ul>
             </div>
 
-            <div className="hidden md:flex items-center justify-center text-muted-foreground/45">
-              <div className="rounded-full border border-border/70 bg-background/80 px-3 py-2 text-xs font-medium">
-                Resolve
+            <div className="hidden md:flex flex-col items-center justify-center gap-3 text-center">
+              <div className="rounded-2xl border border-border/70 bg-background/85 px-4 py-3 shadow-sm">
+                <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
+                  Loom
+                </p>
+                <p className="mt-1 text-xs font-medium text-foreground/80">
+                  Applies runtime constraints
+                </p>
+                <div className="mt-3 flex flex-col gap-1.5">
+                  {['tools', 'policy', 'budget'].map((item) => (
+                    <span
+                      key={item}
+                      className="rounded-full border border-border/70 bg-accent/70 px-2.5 py-1 text-[11px] text-muted-foreground"
+                    >
+                      {item}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
 

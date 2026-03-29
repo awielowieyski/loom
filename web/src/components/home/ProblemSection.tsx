@@ -41,6 +41,11 @@ export function ProblemSection() {
           </p>
         </div>
 
+        <div className="rounded-2xl border border-border/70 bg-accent/40 px-4 py-3 text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">Terminology:</span>{' '}
+          a skill handles one task; a capability is a reusable multi-step workflow built from skills.
+        </div>
+
         <div className="grid gap-5 md:grid-cols-[1fr_auto_1fr] md:items-stretch">
           <div className="rounded-3xl border border-border/70 bg-card p-5 space-y-4 shadow-sm">
             <div className="flex items-center gap-2">
@@ -99,6 +104,27 @@ export function ProblemSection() {
               <p className="text-xs text-muted-foreground leading-relaxed">{c.detail}</p>
             </div>
           ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="rounded-2xl border bg-card px-4 py-4 space-y-1.5">
+            <p className="text-sm font-medium text-foreground">Trusted workflows</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Vetted community skills and workflows give agents a better starting point than improvisation.
+            </p>
+          </div>
+          <div className="rounded-2xl border bg-card px-4 py-4 space-y-1.5">
+            <p className="text-sm font-medium text-foreground">Governed resolution</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Loom applies tool availability, trust boundaries, policy, and budget before execution starts.
+            </p>
+          </div>
+          <div className="rounded-2xl border bg-card px-4 py-4 space-y-1.5">
+            <p className="text-sm font-medium text-foreground">Company context without forking</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Teams can extend shared workflows with CRM access, support systems, and local rules without losing upstream improvements.
+            </p>
+          </div>
         </div>
       </div>
     </section>

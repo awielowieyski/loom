@@ -1,44 +1,17 @@
-import { ArrowRight, Files, ShieldCheck, Route, Play } from 'lucide-react'
-
-const steps = [
-  {
-    icon: Files,
-    label: 'Describe the task',
-    description: 'The runtime sends task intent plus context like tools, policy, trust floor, and budget.',
-  },
-  {
-    icon: ShieldCheck,
-    label: 'Evaluate constraints',
-    description: 'Loom checks candidate skills and capabilities against quality, dependency, trust, and cost signals.',
-  },
-  {
-    icon: Route,
-    label: 'Resolve',
-    description: 'It returns the best viable path, ranked alternatives, rejection reasons, and the rationale for the choice.',
-  },
-  {
-    icon: Play,
-    label: 'Execute',
-    description: 'The agent runtime carries out the resolved plan using its own tools, workflows, and observability stack.',
-  },
-] as const
+import { ArrowRight } from 'lucide-react'
 
 const differentiators = [
   {
-    title: 'Better than search',
-    description: 'Loom is not just matching words. It is choosing a path that can actually work in the current runtime.',
+    title: 'Chooses a viable workflow',
+    description: 'Loom does not just return similar matches. It selects a skill or multi-step workflow that fits the current runtime.',
   },
   {
-    title: 'Safer by default',
-    description: 'Dependency gaps, trust warnings, and policy conflicts are surfaced before the agent starts executing.',
+    title: 'Explains the tradeoff',
+    description: 'The runtime can see why a path won, what was rejected, and when a fallback is good enough.',
   },
   {
-    title: 'Clearer tradeoffs',
-    description: 'The runtime can see why one option won and what it gives up by choosing a cheaper or lighter fallback.',
-  },
-  {
-    title: 'Portable knowledge',
-    description: 'Shared capabilities stay reusable while enterprises and individuals layer on local governance and preferences.',
+    title: 'Leaves execution to your runtime',
+    description: 'Loom resolves the plan, but your agent still executes it with its own tools, logging, and control flow.',
   },
 ] as const
 
@@ -48,10 +21,10 @@ export function HowItWorksSection() {
       <div className="max-w-3xl mx-auto space-y-12 md:space-y-14">
         <div className="text-center space-y-3">
           <h2 className="text-xl md:text-2xl font-semibold tracking-tight">
-            What Loom actually does
+            Governed resolution in practice
           </h2>
           <p className="text-sm text-muted-foreground">
-            It turns externalised task knowledge into constrained runtime choice.
+            It turns trusted skills and workflows into a concrete choice for this runtime.
           </p>
         </div>
 
@@ -80,7 +53,7 @@ export function HowItWorksSection() {
               </p>
               <ul className="mt-2 space-y-2 text-sm text-foreground/80">
                 <li>Checks dependencies and trust boundaries</li>
-                <li>Ranks viable capabilities</li>
+                <li>Ranks viable skills and workflows</li>
                 <li>Rejects paths that do not fit the runtime</li>
               </ul>
             </div>
@@ -92,7 +65,7 @@ export function HowItWorksSection() {
                 Output
               </p>
               <ul className="mt-2 space-y-2 text-sm text-foreground/80">
-                <li>Selected capability and rationale</li>
+                <li>Selected skill or workflow and rationale</li>
                 <li>Alternatives and fallbacks</li>
                 <li>Resolved plan the agent can execute</li>
               </ul>
@@ -100,29 +73,7 @@ export function HowItWorksSection() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-          {steps.map((step, i) => (
-            <div key={step.label} className="relative flex flex-col items-center text-center">
-              <div className="flex items-center gap-2 md:flex-col md:gap-3 w-full md:w-auto">
-                <div className="shrink-0 h-10 w-10 rounded-xl bg-primary/5 border border-border/50 flex items-center justify-center">
-                  <step.icon className="h-4.5 w-4.5 text-foreground/70" />
-                </div>
-                <div className="flex-1 md:flex-none text-left md:text-center">
-                  <p className="text-sm font-medium text-foreground">{step.label}</p>
-                  <p className="text-xs text-muted-foreground leading-relaxed mt-0.5 md:mt-1">
-                    {step.description}
-                  </p>
-                </div>
-              </div>
-              {i < steps.length - 1 && (
-                <ArrowRight className="hidden md:block absolute -right-3 top-5 h-3.5 w-3.5 text-muted-foreground/40" />
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Differentiators */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {differentiators.map((d) => (
             <div
               key={d.title}
